@@ -265,6 +265,7 @@ function renderPassage(data) {
       <div class="verse-header">
         <span class="verse-ref">${v.reference}</span>
         <span class="verse-lang">${v.language} — Strong's</span>
+      </div>
       <div class="interlinear-table-wrapper"><table class="interlinear-table">
         <thead><tr>`;
     for (const w of interlinear) {
@@ -419,9 +420,10 @@ chSel.addEventListener('change', () => loadVerses(bookSel.value, chSel.value));
 vsSel.addEventListener('change', () => {
   if (!vsSel.value) return;
   populateEndVerses(vsSel.value);
-  // Don't auto-submit yet — let user pick end verse
 });
-vsEndSel.addEventListener('change', () => {
+const searchForm = $('#searchForm');
+searchForm.addEventListener('submit', (e) => {
+  e.preventDefault();
   if (bookSel.value && chSel.value && vsSel.value) {
     loadPassage(bookSel.value, chSel.value, verseRange());
   }
