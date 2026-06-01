@@ -104,9 +104,9 @@
 
   /* AI Chat */
   .main-layout { display: flex; gap: 16px; align-items: flex-start; margin-top: 16px; }
-  .panel-left { width: 260px; flex-shrink: 0; display: none; }
-  .panel-center { flex: 1; min-width: 0; }
-  .panel-right { width: 260px; flex-shrink: 0; display: none; }
+  .panel-left { flex: 3; min-width: 280px; max-width: 420px; display: none; }
+  .panel-center { flex: 5; min-width: 0; }
+  .panel-right { flex: 2; min-width: 200px; max-width: 300px; display: none; }
 
   .chat-section {
     border: 1px solid #30363d; border-radius: 8px;
@@ -123,7 +123,7 @@
   .chat-header { color: #58a6ff; font-size: 16px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
   .chat-messages {
     background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-    max-height: 300px; overflow-y: auto; padding: 12px; margin-bottom: 12px;
+    max-height: 400px; overflow-y: auto; padding: 12px; margin-bottom: 12px;
     display: flex; flex-direction: column; gap: 8px;
   }
   .chat-msg { padding: 8px 12px; border-radius: 8px; max-width: 85%; font-size: 13px; line-height: 1.5; }
@@ -198,6 +198,13 @@
     <select id="modelSelect" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:13px">
     </select>
   </div>
+  <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+    <label style="color:#8b949e;font-size:12px">Language:</label>
+    <select id="langSelect" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:13px">
+      <option value="en">English</option>
+      <option value="id">Bahasa Indonesia</option>
+    </select>
+  </div>
 </div>
 </div>
 <div class="panel-center">
@@ -226,7 +233,8 @@ async function loadPassage(book, chapter, verse) {
   panelLeft.style.display = 'none';
   panelRight.style.display = 'none';
   try {
-    const r = await fetch(`/api/query?book=${encodeURIComponent(book)}&chapter=${chapter}&verse=${encodeURIComponent(verse)}`);
+    const version = langSelect ? langSelect.value === 'id' ? 'tb' : 'kjv' : 'kjv';
+    const r = await fetch(`/api/query?book=${encodeURIComponent(book)}&chapter=${chapter}&verse=${encodeURIComponent(verse)}&version=${version}`);
     if (!r.ok) {
       const err = await r.json();
       content.innerHTML = `<div class="error">${err.error || r.statusText}</div>`;
@@ -257,7 +265,13 @@ function renderPassage(data) {
       <div class="verse-header">
         <span class="verse-ref">${v.reference}</span>
         <span class="verse-lang">${v.language} — Strong's</span>
-      </div>
+  <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+    <label style="color:#8b949e;font-size:12px">Language:</label>
+    <select id="langSelect" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:13px">
+      <option value="en">English</option>
+      <option value="id">Bahasa Indonesia</option>
+    </select>
+  </div>
       <div class="interlinear-table-wrapper"><table class="interlinear-table">
         <thead><tr>`;
     for (const w of interlinear) {
@@ -300,7 +314,8 @@ function renderPassage(data) {
     html += `</tbody></table></div>`;
 
     if (v.text) {
-      html += `<div class="kjv-text"><strong>KJV:</strong> ${v.text}</div>`;
+      const vlabel = langSelect && langSelect.value === 'id' ? 'TB:' : 'KJV:';
+      html += `<div class="kjv-text"><strong>${vlabel}</strong> ${v.text}</div>`;
     }
 
     // Verse navigation
@@ -476,6 +491,7 @@ const chatMessages = $('#chatMessages');
 const chatInput = $('#chatInput');
 const chatSendBtn = $('#chatSendBtn');
 const modelSelect = $('#modelSelect');
+const langSelect = $('#langSelect');
 
 function getCurrentPassageText() {
   const cards = $$('.verse-card');
@@ -516,10 +532,11 @@ async function sendChatMessage() {
       // Fallback: ask ollama
       const context = getCurrentPassageText();
       const model = modelSelect.value || 'llama3.1:8b';
+      const lang = langSelect ? langSelect.value : 'en';
       const r = await fetch('/api/ask', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({question, context, model}),
+        body: JSON.stringify({question, context, model, lang}),
       });
       const data = await r.json();
       if (data.answer && data.answer.includes('does not support image')) {
@@ -559,7 +576,51 @@ const BOOK_NAME_MAP = {
   "leviticus":"Lev","lev":"Lev","le":"Lev",
   "numbers":"Num","num":"Num","nu":"Num",
   "deuteronomy":"Deut","deut":"Deut","deu":"Deut","de":"Deut",
-  "joshua":"Josh","josh":"Josh","jos":"Josh",
+    "joshua":"Josh","josh":"Josh","jos":"Josh",
+    "kejadian":"Gen","kej":"Gen","keluaran":"Exod","kel":"Exod",
+    "imamat":"Lev","ima":"Lev","bilangan":"Num","bil":"Num",
+    "ulangan":"Deut","ula":"Deut","yoshua":"Josh","yosh":"Josh",
+    "hakim-hakim":"Judg","hakim":"Judg","hak":"Judg",
+    "rut":"Ruth","ruth":"Ruth",
+    "1 samuel":"1Sam","1sam":"1Sam","1samuel":"1Sam",
+    "2 samuel":"2Sam","2sam":"2Sam","2samuel":"2Sam",
+    "1 raja-raja":"1Kgs","1raja":"1Kgs","1raj":"1Kgs",
+    "2 raja-raja":"2Kgs","2raja":"2Kgs","2raj":"2Kgs",
+    "1 tawarikh":"1Chr","1taw":"1Chr","1tawarikh":"1Chr",
+    "2 tawarikh":"2Chr","2taw":"2Chr","2tawarikh":"2Chr",
+    "ezra":"Ezra","ezr":"Ezra","nehemia":"Neh","neh":"Neh",
+    "ester":"Esth","est":"Esth","ayub":"Job","ayu":"Job",
+    "mazmur":"Ps","maz":"Ps","ms":"Ps",
+    "amsal":"Prov","ams":"Prov","pengkhotbah":"Eccl","pengk":"Eccl",
+    "kidung agung":"Song","kidung":"Song",
+    "yesaya":"Isa","yes":"Isa","yermia":"Jer","yer":"Jer",
+    "ratapan":"Lam","rata":"Lam","yehezkiel":"Ezek","yeh":"Ezek",
+    "daniel":"Dan","dan":"Dan","hosea":"Hos","hos":"Hos",
+    "yoel":"Joel","amos":"Amos","obaja":"Obad","oba":"Obad",
+    "yunus":"Jonah","yun":"Jonah","mikha":"Mic","mik":"Mic",
+    "nahum":"Nah","nah":"Nah","habakuk":"Hab","hab":"Hab",
+    "zefanya":"Zeph","zef":"Zeph","hagai":"Hag","hag":"Hag",
+    "zakharia":"Zech","zak":"Zech","maleakhi":"Mal","mal":"Mal",
+    "matius":"Matt","mat":"Matt","markus":"Mark","mar":"Mark",
+    "lukas":"Luke","luk":"Luke","yohanes":"John","yoh":"John",
+    "kisah para rasul":"Acts","kisah":"Acts","kis":"Acts",
+    "roma":"Rom","rom":"Ro","1 korintus":"1Cor","1kor":"1Cor",
+    "2 korintus":"2Cor","2kor":"2Cor","galatia":"Gal","gal":"Gal",
+    "efesus":"Eph","efe":"Eph","filipi":"Phil","fil":"Phil",
+    "kolose":"Col","kol":"Col",
+    "1 tesalonika":"1Thess","1tes":"1Thess",
+    "2 tesalonika":"2Thess","2tes":"2Thess",
+    "1 timotius":"1Tim","1tim":"1Tim",
+    "2 timotius":"2Tim","2tim":"2Tim",
+    "titus":"Titus","tit":"Titus","filemon":"Phlm","fil":"Phlm",
+    "ibrani":"Heb","ibr":"Heb","yakobus":"Jas","yak":"Jas",
+    "1 petrus":"1Pet","1pet":"1Pet",
+    "2 petrus":"2Pet","2pet":"2Pet",
+    "1 yohanes":"1John","1yoh":"1John",
+    "2 yohanes":"2John","2yoh":"2John",
+    "3 yohanes":"3John","3yoh":"3John",
+    "yudas":"Jude","yud":"Jude",
+    "wahyu":"Rev","wah":"Rev",
   "judges":"Judg","judg":"Judg","jud":"Judg",
   "ruth":"Ruth","rut":"Ruth",
   "1 samuel":"1Sam","1sam":"1Sam","1samuel":"1Sam","i samuel":"1Sam","1 sam":"1Sam",
@@ -624,7 +685,7 @@ const BOOK_NAME_MAP = {
 
 function linkifyVerses(text) {
   // Match patterns like "Book Chapter:Verse" or "Book Chapter:Verse-Verse"
-  return text.replace(/\b((?:[12]\s*)?[A-Za-z]{3,}(?:\s*\.)?)\s*(\d+):(\d+)(?:\s*[-–]\s*(\d+))?\b/g, (match, bookRaw, ch, vs, vsEnd) => {
+  return text.replace(/\b((?:[12]\s+)?(?:[A-Za-z]{3,}\s+){0,2}[A-Za-z]{3,}(?:\s*\.)?)\s*(\d+):(\d+)(?:\s*[-–]\s*(\d+))?\b/g, (match, bookRaw, ch, vs, vsEnd) => {
     const key = bookRaw.replace(/\./g, '').trim().toLowerCase();
     const code = BOOK_NAME_MAP[key];
     if (!code) return match;

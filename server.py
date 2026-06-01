@@ -68,6 +68,15 @@ def init_db():
             updated_at TEXT DEFAULT (datetime('now'))
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS strong_id (
+            book_code TEXT,
+            chapter INTEGER,
+            verse INTEGER,
+            text TEXT,
+            PRIMARY KEY (book_code, chapter, verse)
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -136,14 +145,15 @@ def get_verses(book_code, chapter):
     return [r[0] for r in rows]
 
 
-def query_verse(book_code, chapter, verse_start, verse_end):
+def query_verse(book_code, chapter, verse_start, verse_end, version="kjv"):
     conn = get_conn()
 
     is_ot = book_code in OT_SET
     orig_table = "strong_he" if is_ot else "strong_gr"
 
+    en_table = "strong_id" if version == "tb" else "strong_en"
     en_rows = conn.execute(
-        "SELECT chapter, verse, text FROM strong_en "
+        f"SELECT chapter, verse, text FROM {en_table} "
         "WHERE book_code = ? AND chapter = ? AND verse BETWEEN ? AND ? "
         "ORDER BY verse",
         (book_code, chapter, verse_start, verse_end),
@@ -369,7 +379,7 @@ class BibleHandler(SimpleHTTPRequestHandler):
             except ValueError:
                 self._error(400, "Verse must be an integer or range (e.g., 22-24)")
                 return
-            result = query_verse(book, chapter, vstart, vend)
+            result = query_verse(book, chapter, vstart, vend, params.get("version", [""])[0] or "kjv")
             self._json_response(result)
             return
 
@@ -419,10 +429,11 @@ class BibleHandler(SimpleHTTPRequestHandler):
             question = data.get("question", "").strip()
             context = data.get("context", "").strip()
             model = data.get("model", OLLAMA_MODEL).strip()
+            lang = data.get("lang", "en").strip()
             if not question:
                 self._error(400, "Missing question")
                 return
-            result = self._handle_ask(question, context, model)
+            result = self._handle_ask(question, context, model, lang)
             self._json_response(result)
             return
 
@@ -471,14 +482,23 @@ class BibleHandler(SimpleHTTPRequestHandler):
 
         self._error(404, "Not found")
 
-    def _handle_ask(self, question, context, model=None):
+    def _handle_ask(self, question, context, model=None, lang="en"):
         model = model or OLLAMA_MODEL
-        prompt = (
-            "You are a Bible study assistant. Answer the user's question "
-            "based on Scripture. Be concise (2-4 sentences). "
-            "Always cite verses using this exact format: Book Chapter:Verse (e.g. Exodus 20:3, Romans 3:22-24). "
-            "Use full book names (e.g. 'Exodus', '1 Corinthians') for clarity.\n"
-        )
+        if lang == "id":
+            prompt = (
+                "Anda adalah asisten studi Alkitab. Jawab pertanyaan pengguna "
+                "berdasarkan Kitab Suci. Jawablah dalam bahasa Indonesia. "
+                "Jawab dengan singkat (2-4 kalimat). "
+                "Selalu kutip ayat menggunakan format: Kitab Pasal:Ayat (misalnya Keluaran 20:3, Roma 3:22-24). "
+                "Gunakan nama kitab versi TB (Terjemahan Baru) seperti 'Kejadian', 'Keluaran', '1 Korintus'.\n"
+            )
+        else:
+            prompt = (
+                "You are a Bible study assistant. Answer the user's question "
+                "based on Scripture. Be concise (2-4 sentences). "
+                "Always cite verses using this exact format: Book Chapter:Verse (e.g. Exodus 20:3, Romans 3:22-24). "
+                "Use full book names (e.g. 'Exodus', '1 Corinthians') for clarity.\n"
+            )
         if context:
             prompt += f"\nPassage context:\n{context}\n"
         prompt += f"\nQuestion: {question}\nAnswer:"
