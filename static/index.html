@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interlinear Bible</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1117; color: #e6edf3; min-height: 100vh;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+  header {
+    background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 0;
+  }
+  header .container {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 20px; color: #58a6ff; white-space: nowrap; }
+
+  .search-form { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+  .search-form select[name="book"]    { flex: 0 1 140px; }
+  .search-form select[name="chapter"] { flex: 0 1 80px; }
+  .search-form select[name="verse"]   { flex: 0 1 100px; }
+  .search-form input, .search-form select, .search-form button {
+    padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d;
+    background: #0d1117; color: #e6edf3; font-size: 14px;
+  }
+  .search-form input:focus, .search-form select:focus { outline: none; border-color: #58a6ff; }
+  .search-form select { cursor: pointer; flex: 0 1 160px; }
+  .search-form optgroup { font-style: normal; font-weight: 600; color: #8b949e; }
+  .search-form option.ot-book { color: #d2a8ff; }
+  .search-form option.nt-book { color: #7ee787; }
+  .search-form button {
+    background: #238636; border-color: #2ea043; cursor: pointer;
+    font-weight: 600;
+  }
+  .search-form button:hover { background: #2ea043; }
+  .search-form input { flex: 0 1 160px; }
+  .search-form input[name="chapter"] { flex: 0 1 80px; }
+  .search-form input[name="verse"] { flex: 0 1 100px; }
+
+  .error { color: #f85149; padding: 12px; background: #2d1215; border-radius: 6px; margin: 16px 0; }
+  .loading { text-align: center; padding: 40px; color: #8b949e; }
+
+  .verse-card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    margin: 16px 0;
+  }
+  .verse-header {
+    padding: 12px 16px; border-bottom: 1px solid #30363d;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .verse-ref { font-weight: 600; font-size: 16px; color: #58a6ff; }
+  .verse-lang { font-size: 12px; color: #8b949e; }
+
+  .interlinear-table-wrapper {
+    overflow-x: auto; margin-top: -1px;
+  }
+  .interlinear-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  .interlinear-table th {
+    padding: 8px 6px; text-align: center; font-weight: 500; color: #8b949e;
+    border-right: 1px solid #21262d; font-size: 11px; min-width: 60px;
+  }
+  .interlinear-table td {
+    padding: 6px; text-align: center; border-right: 1px solid #21262d;
+    white-space: nowrap; max-width: 120px;
+  }
+  .interlinear-table td.row-wrap {
+    white-space: normal; word-break: break-word; max-width: 140px;
+  }
+  .interlinear-table tr:last-child td { border-bottom: none; }
+  .interlinear-table th:last-child, .interlinear-table td:last-child { border-right: none; }
+
+  .row-strong { color: #d2a8ff; font-family: 'SF Mono', Monaco, monospace; font-size: 11px; }
+  .row-translit { color: #79c0ff; font-style: italic; font-size: 12px; }
+  .row-original { font-size: 16px; font-weight: 500; }
+  .row-original.greek { font-family: 'Noto Sans', 'Cardo', serif; }
+  .row-original.hebrew { font-family: 'Noto Sans Hebrew', 'SBL Hebrew', serif; direction: rtl; }
+  .row-gloss { color: #e6edf3; font-size: 12px; }
+  .row-grammar { color: #7ee787; font-family: 'SF Mono', Monaco, monospace; font-size: 10px; }
+
+  .kjv-text {
+    padding: 12px 16px; border-top: 1px solid #30363d;
+    font-size: 14px; line-height: 1.6; color: #8b949e;
+    word-wrap: break-word; overflow-wrap: break-word;
+  }
+  .kjv-text strong { color: #e6edf3; }
+
+  .verse-nav {
+    display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid #30363d;
+    justify-content: space-between;
+  }
+  .verse-nav a {
+    color: #58a6ff; text-decoration: none; font-size: 13px;
+    padding: 4px 12px; border: 1px solid #30363d; border-radius: 6px;
+  }
+  .verse-nav a:hover { background: #1f2937; }
+
+  @media (max-width: 600px) {
+    header .container { flex-direction: column; align-items: stretch; }
+    .search-form { flex-wrap: nowrap; }
+    .search-form input[name="book"] { flex: 2; }
+    .search-form input[name="chapter"] { flex: 1; }
+    .search-form input[name="verse"] { flex: 1; }
+    .interlinear-table { font-size: 11px; }
+    .interlinear-table th { min-width: 40px; padding: 4px; font-size: 10px; }
+    .interlinear-table td { padding: 4px; }
+    .row-original { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="container">
+    <h1>📖 Interlinear Bible</h1>
+    <form class="search-form" id="searchForm">
+      <select name="book" required>
+        <option value="">— Book —</option>
+      </select>
+      <select name="chapter" required disabled>
+        <option value="">— Ch —</option>
+      </select>
+      <select name="verse" required disabled>
+        <option value="">— Vs —</option>
+      </select>
+      <button type="submit">Search</button>
+    </form>
+  </div>
+</header>
+
+<div class="container" id="content">
+  <div class="loading">Enter a passage above to view interlinear data</div>
+</div>
+
+<script>
+const $ = (s, p) => (p || document).querySelector(s);
+const $$ = (s, p) => [...(p || document).querySelectorAll(s)];
+
+const content = $('#content');
+
+async function loadPassage(book, chapter, verse) {
+  content.innerHTML = '<div class="loading">Loading...</div>';
+  try {
+    const r = await fetch(`/api/query?book=${encodeURIComponent(book)}&chapter=${chapter}&verse=${encodeURIComponent(verse)}`);
+    if (!r.ok) {
+      const err = await r.json();
+      content.innerHTML = `<div class="error">${err.error || r.statusText}</div>`;
+      return;
+    }
+    const data = await r.json();
+    renderPassage(data);
+  } catch (e) {
+    content.innerHTML = `<div class="error">Network error: ${e.message}</div>`;
+  }
+}
+
+function renderPassage(data) {
+  let html = '';
+  for (const v of data.verses) {
+    const isGreek = v.language === 'Greek';
+    const interlinear = v.interlinear;
+    if (!interlinear || interlinear.length === 0) {
+      html += `<div class="verse-card"><div class="verse-header"><span class="verse-ref">${v.reference}</span></div><div class="kjv-text">${v.text || '(No data)'}</div></div>`;
+      continue;
+    }
+
+    const origClass = isGreek ? 'greek' : 'hebrew';
+
+    html += `<div class="verse-card">
+      <div class="verse-header">
+        <span class="verse-ref">${v.reference}</span>
+        <span class="verse-lang">${v.language} — Strong's</span>
+      </div>
+      <div class="interlinear-table-wrapper"><table class="interlinear-table">
+        <thead><tr>`;
+    for (const w of interlinear) {
+      html += `<th>${w.strong}</th>`;
+    }
+    html += `</tr></thead><tbody>`;
+
+    if (isGreek) {
+      // Transliteration row
+      html += `<tr class="row-translit">`;
+      for (const w of interlinear) {
+        html += `<td>${w.transliteration || ''}</td>`;
+      }
+      html += `</tr>`;
+    }
+
+    // Original language row
+    html += `<tr class="row-original ${origClass}">`;
+    for (const w of interlinear) {
+      html += `<td>${w.original}</td>`;
+    }
+    html += `</tr>`;
+
+    // Gloss row
+    html += `<tr class="row-gloss">`;
+    for (const w of interlinear) {
+      html += `<td>${w.gloss || ''}</td>`;
+    }
+    html += `</tr>`;
+
+    if (isGreek) {
+      // Grammar row
+      html += `<tr class="row-grammar">`;
+      for (const w of interlinear) {
+        html += `<td>${w.grammar || ''}</td>`;
+      }
+      html += `</tr>`;
+    }
+
+    html += `</tbody></table></div>`;
+
+    if (v.text) {
+      html += `<div class="kjv-text"><strong>KJV:</strong> ${v.text}</div>`;
+    }
+
+    // Verse navigation
+    html += `<div class="verse-nav">
+      <div>`;
+    if (v.verse > 1) {
+      const prevVerse = v.verse - 1;
+      html += `<a href="#" onclick="event.preventDefault(); searchFromLink('${data.book}', ${data.chapter}, ${prevVerse})">◀ Prev</a>`;
+    }
+    html += `</div><div>`;
+    if (v.verse < 150) {
+      const nextVerse = v.verse + 1;
+      html += `<a href="#" onclick="event.preventDefault(); searchFromLink('${data.book}', ${data.chapter}, ${nextVerse})">Next ▶</a>`;
+    }
+    html += `</div></div></div>`;
+  }
+  content.innerHTML = html;
+}
+
+function searchFromLink(book, chapter, verse) {
+  bookSel.value = book;
+  loadChapters(book).then(() => {
+    chSel.value = chapter;
+    loadVerses(book, chapter).then(() => {
+      vsSel.value = verse;
+      loadPassage(book, chapter, verse);
+    });
+  });
+}
+
+const bookSel = $('select[name="book"]');
+const chSel = $('select[name="chapter"]');
+const vsSel = $('select[name="verse"]');
+
+function clearSelect(sel, placeholder) {
+  sel.innerHTML = `<option value="">${placeholder}</option>`;
+  sel.disabled = true;
+}
+
+function populateSelect(sel, items, placeholder) {
+  sel.innerHTML = `<option value="">${placeholder}</option>`;
+  for (const v of items) {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = v;
+    sel.appendChild(opt);
+  }
+  sel.disabled = false;
+}
+
+async function loadChapters(book) {
+  clearSelect(chSel, '— Ch —');
+  clearSelect(vsSel, '— Vs —');
+  if (!book) return;
+  try {
+    const r = await fetch(`/api/chapters?book=${encodeURIComponent(book)}`);
+    const chs = await r.json();
+    populateSelect(chSel, chs, '— Ch —');
+  } catch {}
+}
+
+async function loadVerses(book, chapter) {
+  clearSelect(vsSel, '— Vs —');
+  if (!book || !chapter) return;
+  try {
+    const r = await fetch(`/api/verses?book=${encodeURIComponent(book)}&chapter=${chapter}`);
+    const vs = await r.json();
+    populateSelect(vsSel, vs, '— Vs —');
+  } catch {}
+}
+
+bookSel.addEventListener('change', () => loadChapters(bookSel.value));
+chSel.addEventListener('change', () => loadVerses(bookSel.value, chSel.value));
+vsSel.addEventListener('change', () => {
+  if (bookSel.value && chSel.value && vsSel.value) {
+    loadPassage(bookSel.value, chSel.value, vsSel.value);
+  }
+});
+
+const CANONICAL_OT = ["Gen","Exod","Lev","Num","Deut","Josh","Judg","Ruth","1Sam","2Sam","1Kgs","2Kgs","1Chr","2Chr","Ezra","Neh","Esth","Job","Ps","Prov","Eccl","Song","Isa","Jer","Lam","Ezek","Dan","Hos","Joel","Amos","Obad","Jonah","Mic","Nah","Hab","Zeph","Hag","Zech","Mal"];
+const CANONICAL_NT = ["Matt","Mark","Luke","John","Acts","Rom","1Cor","2Cor","Gal","Eph","Phil","Col","1Thess","2Thess","1Tim","2Tim","Titus","Phlm","Heb","Jas","1Pet","2Pet","1John","2John","3John","Jude","Rev"];
+
+async function init() {
+  try {
+    const r = await fetch('/api/books');
+    const allBooks = await r.json();
+    const avail = new Set(allBooks);
+
+    function addGroup(label, books, klass) {
+      const g = document.createElement('optgroup');
+      g.label = label;
+      for (const b of books) {
+        if (!avail.has(b)) continue;
+        const opt = document.createElement('option');
+        opt.value = b;
+        opt.textContent = b;
+        opt.className = klass;
+        if (b === 'Eph') opt.selected = true;
+        g.appendChild(opt);
+      }
+      bookSel.appendChild(g);
+    }
+
+    addGroup('— Old Testament —', CANONICAL_OT, 'ot-book');
+    addGroup('— New Testament —', CANONICAL_NT, 'nt-book');
+  } catch {}
+  await loadChapters('Eph');
+  await loadVerses('Eph', 5);
+  vsSel.value = '22';
+  loadPassage('Eph', 5, '22-24');
+}
+
+// Also support submit via enter
+$('#searchForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const book = this.book.value.trim();
+  const chapter = this.chapter.value.trim();
+  const verse = this.verse.value.trim();
+  if (book && chapter && verse) {
+    loadPassage(book, chapter, verse);
+  }
+});
+
+init();
+</script>
+</body>
+</html>
