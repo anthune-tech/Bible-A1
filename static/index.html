@@ -187,29 +187,22 @@
 <div class="main-layout">
 <div class="panel-left" id="panelLeft">
 <div class="chat-section" id="chatSection">
-  <div class="chat-header">💬 AI Bible Study Assistant</div>
+  <div class="chat-header">💬 Asisten Studi Alkitab AI</div>
   <div class="chat-messages" id="chatMessages"></div>
   <div class="chat-input-row" style="margin-bottom:8px">
-    <input type="text" id="chatInput" placeholder="Ask a question about this passage..." autocomplete="off">
-    <button id="chatSendBtn">Ask</button>
+    <input type="text" id="chatInput" placeholder="Ajukan pertanyaan tentang bagian ini..." autocomplete="off">
+    <button id="chatSendBtn">Tanya</button>
   </div>
   <div style="display:flex;gap:8px;align-items:center">
     <label style="color:#8b949e;font-size:12px">Model:</label>
     <select id="modelSelect" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:13px">
     </select>
   </div>
-  <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-    <label style="color:#8b949e;font-size:12px">Language:</label>
-    <select id="langSelect" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:13px">
-      <option value="en">English</option>
-      <option value="id">Bahasa Indonesia</option>
-    </select>
-  </div>
 </div>
 </div>
 <div class="panel-center">
 <div class="container" id="content">
-  <div class="loading">Enter a passage above to view interlinear data</div>
+  <div class="loading">Pilih bagian di atas untuk melihat data interlinear</div>
 </div>
 </div>
 <div class="panel-right" id="panelRight">
@@ -233,7 +226,7 @@ async function loadPassage(book, chapter, verse) {
   panelLeft.style.display = 'none';
   panelRight.style.display = 'none';
   try {
-    const version = langSelect ? langSelect.value === 'id' ? 'tb' : 'kjv' : 'kjv';
+    const version = 'tb';
     const r = await fetch(`/api/query?book=${encodeURIComponent(book)}&chapter=${chapter}&verse=${encodeURIComponent(verse)}&version=${version}`);
     if (!r.ok) {
       const err = await r.json();
@@ -265,13 +258,6 @@ function renderPassage(data) {
       <div class="verse-header">
         <span class="verse-ref">${v.reference}</span>
         <span class="verse-lang">${v.language} — Strong's</span>
-  <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-    <label style="color:#8b949e;font-size:12px">Language:</label>
-    <select id="langSelect" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:13px">
-      <option value="en">English</option>
-      <option value="id">Bahasa Indonesia</option>
-    </select>
-  </div>
       <div class="interlinear-table-wrapper"><table class="interlinear-table">
         <thead><tr>`;
     for (const w of interlinear) {
@@ -314,7 +300,7 @@ function renderPassage(data) {
     html += `</tbody></table></div>`;
 
     if (v.text) {
-      const vlabel = langSelect && langSelect.value === 'id' ? 'TB:' : 'KJV:';
+      const vlabel = 'TB:';
       html += `<div class="kjv-text"><strong>${vlabel}</strong> ${v.text}</div>`;
     }
 
@@ -491,7 +477,6 @@ const chatMessages = $('#chatMessages');
 const chatInput = $('#chatInput');
 const chatSendBtn = $('#chatSendBtn');
 const modelSelect = $('#modelSelect');
-const langSelect = $('#langSelect');
 
 function getCurrentPassageText() {
   const cards = $$('.verse-card');
@@ -532,7 +517,7 @@ async function sendChatMessage() {
       // Fallback: ask ollama
       const context = getCurrentPassageText();
       const model = modelSelect.value || 'llama3.1:8b';
-      const lang = langSelect ? langSelect.value : 'en';
+      const lang = 'id';
       const r = await fetch('/api/ask', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -549,7 +534,7 @@ async function sendChatMessage() {
     addChatMessage('error', `Error: ${e.message}`);
   }
   chatSendBtn.disabled = false;
-  chatSendBtn.textContent = 'Ask';
+  chatSendBtn.textContent = 'Tanya';
 }
 
 function addChatMessage(role, text) {
