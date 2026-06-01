@@ -102,6 +102,52 @@
   }
   .verse-nav a:hover { background: #1f2937; }
 
+  /* AI Chat */
+  .main-layout { display: flex; gap: 16px; align-items: flex-start; margin-top: 16px; }
+  .panel-left { width: 260px; flex-shrink: 0; display: none; }
+  .panel-center { flex: 1; min-width: 0; }
+  .panel-right { width: 260px; flex-shrink: 0; display: none; }
+
+  .chat-section {
+    border: 1px solid #30363d; border-radius: 8px;
+    padding: 12px; background: #161b22; position: sticky; top: 16px;
+  }
+  #content { min-width: 0; }
+  .commentary-section {
+    border: 1px solid #30363d; border-radius: 8px;
+    padding: 12px; background: #161b22; position: sticky; top: 16px;
+  }
+  .commentary-header { color: #58a6ff; font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+  .commentary-placeholder { color: #8b949e; font-size: 13px; text-align: center; padding: 40px 12px; }
+  .chat-header { color: #58a6ff; font-size: 16px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .chat-header { color: #58a6ff; font-size: 16px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .chat-messages {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    max-height: 300px; overflow-y: auto; padding: 12px; margin-bottom: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .chat-msg { padding: 8px 12px; border-radius: 8px; max-width: 85%; font-size: 13px; line-height: 1.5; }
+  .chat-msg.user { background: #1f6feb22; align-self: flex-end; border: 1px solid #1f6feb44; }
+  .chat-msg.ai { background: #23863622; align-self: flex-start; border: 1px solid #23863644; white-space: pre-wrap; }
+  .chat-msg.error { background: #f8514922; align-self: flex-start; border: 1px solid #f8514944; color: #f85149; }
+  .chat-input-row { display: flex; gap: 8px; }
+  .chat-input-row input {
+    flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d;
+    background: #0d1117; color: #e6edf3; font-size: 14px;
+  }
+  .chat-input-row input:focus { outline: none; border-color: #58a6ff; }
+  .chat-input-row button {
+    padding: 8px 20px; border-radius: 6px; border: 1px solid #2ea043;
+    background: #238636; color: #e6edf3; font-weight: 600; cursor: pointer;
+  }
+  .chat-input-row button:hover { background: #2ea043; }
+  .chat-input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  @media (max-width: 900px) {
+    .main-layout { flex-direction: column; }
+    .panel-left, .panel-right { width: 100%; }
+    .chat-section, .commentary-section { position: static; }
+  }
   @media (max-width: 600px) {
     header .container { flex-direction: column; align-items: stretch; }
     .search-form { flex-wrap: nowrap; }
@@ -138,8 +184,33 @@
   </div>
 </header>
 
+<div class="main-layout">
+<div class="panel-left" id="panelLeft">
+<div class="chat-section" id="chatSection">
+  <div class="chat-header">💬 AI Bible Study Assistant</div>
+  <div class="chat-messages" id="chatMessages"></div>
+  <div class="chat-input-row" style="margin-bottom:8px">
+    <input type="text" id="chatInput" placeholder="Ask a question about this passage..." autocomplete="off">
+    <button id="chatSendBtn">Ask</button>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <label style="color:#8b949e;font-size:12px">Model:</label>
+    <select id="modelSelect" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:13px">
+    </select>
+  </div>
+</div>
+</div>
+<div class="panel-center">
 <div class="container" id="content">
   <div class="loading">Enter a passage above to view interlinear data</div>
+</div>
+</div>
+<div class="panel-right" id="panelRight">
+<div class="commentary-section">
+  <div class="commentary-header">📜 Commentary</div>
+  <div class="commentary-placeholder">Select a passage to view commentary</div>
+</div>
+</div>
 </div>
 
 <script>
@@ -147,9 +218,13 @@ const $ = (s, p) => (p || document).querySelector(s);
 const $$ = (s, p) => [...(p || document).querySelectorAll(s)];
 
 const content = $('#content');
+const panelLeft = $('#panelLeft');
+const panelRight = $('#panelRight');
 
 async function loadPassage(book, chapter, verse) {
   content.innerHTML = '<div class="loading">Loading...</div>';
+  panelLeft.style.display = 'none';
+  panelRight.style.display = 'none';
   try {
     const r = await fetch(`/api/query?book=${encodeURIComponent(book)}&chapter=${chapter}&verse=${encodeURIComponent(verse)}`);
     if (!r.ok) {
@@ -159,6 +234,8 @@ async function loadPassage(book, chapter, verse) {
     }
     const data = await r.json();
     renderPassage(data);
+    panelLeft.style.display = 'block';
+    panelRight.style.display = 'block';
   } catch (e) {
     content.innerHTML = `<div class="error">Network error: ${e.message}</div>`;
   }
@@ -342,6 +419,21 @@ vsEndSel.addEventListener('change', () => {
   }
 });
 
+async function loadModels() {
+  try {
+    const r = await fetch('/api/models');
+    const models = await r.json();
+    modelSelect.innerHTML = '';
+    for (const m of models) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      if (m === 'llama3.1:8b' || m.includes('llama3.1')) opt.selected = true;
+      modelSelect.appendChild(opt);
+    }
+  } catch {}
+}
+
 const CANONICAL_OT = ["Gen","Exod","Lev","Num","Deut","Josh","Judg","Ruth","1Sam","2Sam","1Kgs","2Kgs","1Chr","2Chr","Ezra","Neh","Esth","Job","Ps","Prov","Eccl","Song","Isa","Jer","Lam","Ezek","Dan","Hos","Joel","Amos","Obad","Jonah","Mic","Nah","Hab","Zeph","Hag","Zech","Mal"];
 const CANONICAL_NT = ["Matt","Mark","Luke","John","Acts","Rom","1Cor","2Cor","Gal","Eph","Phil","Col","1Thess","2Thess","1Tim","2Tim","Titus","Phlm","Heb","Jas","1Pet","2Pet","1John","2John","3John","Jude","Rev"];
 
@@ -369,6 +461,7 @@ async function init() {
     addGroup('— Old Testament —', CANONICAL_OT, 'ot-book');
     addGroup('— New Testament —', CANONICAL_NT, 'nt-book');
   } catch {}
+  loadModels();
   await loadChapters('Eph');
   await loadVerses('Eph', 5);
   vsSel.value = '22';
@@ -377,16 +470,171 @@ async function init() {
   loadPassage('Eph', 5, '22-24');
 }
 
-// Also support submit via enter
-$('#searchForm').addEventListener('submit', function(e) {
-  e.preventDefault();
-  const book = this.book.value.trim();
-  const chapter = this.chapter.value.trim();
-  const vr = verseRange();
-  if (book && chapter && vr) {
-    loadPassage(book, chapter, vr);
+// --- AI Chat ---
+const chatSection = $('#chatSection');
+const chatMessages = $('#chatMessages');
+const chatInput = $('#chatInput');
+const chatSendBtn = $('#chatSendBtn');
+const modelSelect = $('#modelSelect');
+
+function getCurrentPassageText() {
+  const cards = $$('.verse-card');
+  return cards.map(c => {
+    const ref = c.querySelector('.verse-ref');
+    const text = c.querySelector('.kjv-text');
+    return ref ? `${ref.textContent}: ${text ? text.textContent.replace('KJV:', '').trim() : ''}` : '';
+  }).filter(Boolean).join('\n');
+}
+
+async function sendChatMessage() {
+  const question = chatInput.value.trim();
+  if (!question) return;
+  chatInput.value = '';
+  addChatMessage('user', question);
+  chatSendBtn.disabled = true;
+  chatSendBtn.textContent = '...';
+  try {
+    // First: check admin references
+    const refR = await fetch('/api/references/search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question}),
+    });
+    const refData = await refR.json();
+
+    if (refData.matched && refData.ref) {
+      const ref = refData.ref;
+      addChatMessage('ai', ref.answer);
+      // Load referenced verses if book is set
+      if (ref.book) {
+        const ch = ref.chapter || 1;
+        const vs = ref.verse_start || 1;
+        const ve = ref.verse_end || vs;
+        await loadPassage(ref.book, ch, vs === ve ? `${vs}` : `${vs}-${ve}`);
+      }
+    } else {
+      // Fallback: ask ollama
+      const context = getCurrentPassageText();
+      const model = modelSelect.value || 'llama3.1:8b';
+      const r = await fetch('/api/ask', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({question, context, model}),
+      });
+      const data = await r.json();
+      if (data.answer && data.answer.includes('does not support image')) {
+        addChatMessage('error', 'This model only supports text. Please enter a text question, not an image.');
+      } else {
+        addChatMessage('ai', data.answer || 'No response');
+      }
+    }
+  } catch (e) {
+    addChatMessage('error', `Error: ${e.message}`);
   }
-});
+  chatSendBtn.disabled = false;
+  chatSendBtn.textContent = 'Ask';
+}
+
+function addChatMessage(role, text) {
+  const div = document.createElement('div');
+  div.className = `chat-msg ${role}`;
+  if (role === 'ai') {
+    div.innerHTML = linkifyVerses(escHtml(text));
+  } else {
+    div.textContent = text;
+  }
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+const BOOK_NAME_MAP = {
+  "genesis":"Gen","gen":"Gen","ge":"Gen",
+  "exodus":"Exod","exo":"Exod","exod":"Exod","ex":"Exod",
+  "leviticus":"Lev","lev":"Lev","le":"Lev",
+  "numbers":"Num","num":"Num","nu":"Num",
+  "deuteronomy":"Deut","deut":"Deut","deu":"Deut","de":"Deut",
+  "joshua":"Josh","josh":"Josh","jos":"Josh",
+  "judges":"Judg","judg":"Judg","jud":"Judg",
+  "ruth":"Ruth","rut":"Ruth",
+  "1 samuel":"1Sam","1sam":"1Sam","1samuel":"1Sam","i samuel":"1Sam","1 sam":"1Sam",
+  "2 samuel":"2Sam","2sam":"2Sam","2samuel":"2Sam","ii samuel":"2Sam","2 sam":"2Sam",
+  "1 kings":"1Kgs","1kgs":"1Kgs","1kings":"1Kgs","i kings":"1Kgs","1 kgs":"1Kgs",
+  "2 kings":"2Kgs","2kgs":"2Kgs","2kings":"2Kgs","ii kings":"2Kgs","2 kgs":"2Kgs",
+  "1 chronicles":"1Chr","1chr":"1Chr","1chronicles":"1Chr","i chronicles":"1Chr","1 chr":"1Chr",
+  "2 chronicles":"2Chr","2chr":"2Chr","2chronicles":"2Chr","ii chronicles":"2Chr","2 chr":"2Chr",
+  "ezra":"Ezra","ezr":"Ezra",
+  "nehemiah":"Neh","neh":"Neh","ne":"Neh",
+  "esther":"Esth","esth":"Esth","est":"Esth",
+  "job":"Job","jb":"Job",
+  "psalms":"Ps","psalm":"Ps","ps":"Ps","psa":"Ps",
+  "proverbs":"Prov","prov":"Prov","pro":"Prov","prv":"Prov",
+  "ecclesiastes":"Eccl","eccl":"Eccl","eccles":"Eccl","ecc":"Eccl",
+  "song of solomon":"Song","song":"Song","sos":"Song",
+  "isaiah":"Isa","isa":"Isa","is":"Isa",
+  "jeremiah":"Jer","jer":"Jer","je":"Jer",
+  "lamentations":"Lam","lam":"Lam","la":"Lam",
+  "ezekiel":"Ezek","ezek":"Ezek","eze":"Ezek",
+  "daniel":"Dan","dan":"Dan","da":"Dan",
+  "hosea":"Hos","hos":"Hos","ho":"Hos",
+  "joel":"Joel","joe":"Joel",
+  "amos":"Amos","amo":"Amos",
+  "obadiah":"Obad","obad":"Obad","oba":"Obad",
+  "jonah":"Jonah","jon":"Jonah",
+  "micah":"Mic","mic":"Mic","mi":"Mic",
+  "nahum":"Nah","nah":"Nah","na":"Nah",
+  "habakkuk":"Hab","hab":"Hab","ha":"Hab",
+  "zephaniah":"Zeph","zeph":"Zeph","zep":"Zeph",
+  "haggai":"Hag","hag":"Hag","hg":"Hag",
+  "zechariah":"Zech","zech":"Zech","zec":"Zech",
+  "malachi":"Mal","mal":"Mal","ma":"Mal",
+  "matthew":"Matt","matt":"Matt","mat":"Mt","mt":"Matt",
+  "mark":"Mark","mar":"Mark","mk":"Mark",
+  "luke":"Luke","luk":"Luke","lk":"Luke",
+  "john":"John","joh":"John","jhn":"John",
+  "acts":"Acts","act":"Acts",
+  "romans":"Rom","rom":"Rom","ro":"Rom",
+  "1 corinthians":"1Cor","1cor":"1Cor","1corinthians":"1Cor","i corinthians":"1Cor",
+  "2 corinthians":"2Cor","2cor":"2Cor","2corinthians":"2Cor","ii corinthians":"2Cor",
+  "galatians":"Gal","gal":"Gal","ga":"Gal",
+  "ephesians":"Eph","eph":"Eph","ep":"Eph",
+  "philippians":"Phil","phil":"Phil","php":"Phil",
+  "colossians":"Col","col":"Col","co":"Col",
+  "1 thessalonians":"1Thess","1thess":"1Thess","1thessalonians":"1Thess","i thessalonians":"1Thess",
+  "2 thessalonians":"2Thess","2thess":"2Thess","2thessalonians":"2Thess","ii thessalonians":"2Thess",
+  "1 timothy":"1Tim","1tim":"1Tim","1timothy":"1Tim","i timothy":"1Tim",
+  "2 timothy":"2Tim","2tim":"2Tim","2timothy":"2Tim","ii timothy":"2Tim",
+  "titus":"Titus","tit":"Titus","ti":"Titus",
+  "philemon":"Phlm","phlm":"Phlm","phile":"Phlm",
+  "hebrews":"Heb","heb":"Heb","he":"Heb",
+  "james":"Jas","jas":"Jas","ja":"Jas",
+  "1 peter":"1Pet","1pet":"1Pet","1peter":"1Pet","i peter":"1Pet",
+  "2 peter":"2Pet","2pet":"2Pet","2peter":"2Pet","ii peter":"2Pet",
+  "1 john":"1John","1john":"1John","i john":"1John",
+  "2 john":"2John","2john":"2John","ii john":"2John",
+  "3 john":"3John","3john":"3John","iii john":"3John",
+  "jude":"Jude","jud":"Jude",
+  "revelation":"Rev","rev":"Rev","re":"Rev","revelations":"Rev",
+};
+
+function linkifyVerses(text) {
+  // Match patterns like "Book Chapter:Verse" or "Book Chapter:Verse-Verse"
+  return text.replace(/\b((?:[12]\s*)?[A-Za-z]{3,}(?:\s*\.)?)\s*(\d+):(\d+)(?:\s*[-–]\s*(\d+))?\b/g, (match, bookRaw, ch, vs, vsEnd) => {
+    const key = bookRaw.replace(/\./g, '').trim().toLowerCase();
+    const code = BOOK_NAME_MAP[key];
+    if (!code) return match;
+    const href = `javascript:searchFromLink('${code}',${ch},'${vs}${vsEnd ? '-'+vsEnd : ''}')`;
+    return `<a href="${href}" style="color:#58a6ff;text-decoration:underline;cursor:pointer">${match}</a>`;
+  });
+}
+
+chatSendBtn.addEventListener('click', sendChatMessage);
+chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChatMessage(); });
 
 init();
 </script>

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Bible References</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1117; color: #e6edf3; min-height: 100vh;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 16px; }
+  header { background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 0; }
+  header .container { display: flex; align-items: center; gap: 16px; }
+  header h1 { font-size: 20px; color: #58a6ff; }
+  header a { color: #8b949e; text-decoration: none; font-size: 14px; }
+  header a:hover { color: #58a6ff; }
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 16px; margin: 16px 0;
+  }
+  .card h2 { font-size: 16px; color: #58a6ff; margin-bottom: 12px; }
+  label { display: block; font-size: 13px; color: #8b949e; margin: 8px 0 4px; }
+  input, textarea, select {
+    width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #30363d;
+    background: #0d1117; color: #e6edf3; font-size: 14px;
+  }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: #58a6ff; }
+  textarea { font-family: inherit; resize: vertical; }
+  .form-row { display: flex; gap: 8px; }
+  .form-row > * { flex: 1; }
+  button {
+    padding: 8px 20px; border-radius: 6px; border: 1px solid #2ea043;
+    background: #238636; color: #fff; font-weight: 600; cursor: pointer; font-size: 14px;
+    margin-top: 12px;
+  }
+  button:hover { background: #2ea043; }
+  button.danger { background: #da3633; border-color: #da3633; }
+  button.danger:hover { background: #f85149; }
+  button.secondary { background: #21262d; border-color: #30363d; }
+  button.secondary:hover { background: #30363d; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #21262d; }
+  th { color: #8b949e; font-weight: 500; position: sticky; top: 0; background: #161b22; }
+  tr:hover td { background: #1c2128; }
+  .ref-question { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ref-answer { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ref-verse { color: #79c0ff; font-family: monospace; font-size: 12px; }
+  .actions { display: flex; gap: 4px; }
+  .actions button { margin: 0; padding: 4px 10px; font-size: 12px; }
+  .empty { text-align: center; padding: 40px; color: #8b949e; }
+  .toast {
+    position: fixed; top: 16px; right: 16px; padding: 12px 20px; border-radius: 6px;
+    font-size: 14px; z-index: 100; display: none;
+  }
+  .toast.ok { background: #238636; color: #fff; display: block; }
+  .toast.err { background: #da3633; color: #fff; display: block; }
+  #editId { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="container">
+    <h1>📚 Bible References Admin</h1>
+    <a href="/">← Back to Bible</a>
+  </div>
+</header>
+<div class="container">
+  <div id="toast" class="toast"></div>
+
+  <div class="card">
+    <h2 id="formTitle">Add Reference</h2>
+    <form id="refForm">
+      <input type="hidden" id="editId">
+      <label>Question</label>
+      <input type="text" id="refQuestion" required placeholder="e.g. What does faith mean?">
+      <label>Answer</label>
+      <textarea id="refAnswer" rows="3" required placeholder="The answer..."></textarea>
+      <label>Linked Verse (optional)</label>
+      <div class="form-row">
+        <select id="refBook">
+          <option value="">— Book —</option>
+        </select>
+        <input type="number" id="refChapter" placeholder="Ch">
+        <input type="number" id="refVstart" placeholder="Vs from">
+        <input type="number" id="refVend" placeholder="Vs to">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button type="submit">Save</button>
+        <button type="button" class="secondary" id="cancelEdit" style="display:none" onclick="cancelEdit()">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>All References</h2>
+    <div id="refList"><div class="empty">Loading...</div></div>
+  </div>
+</div>
+
+<script>
+const $ = (s, p) => (p || document).querySelector(s);
+const toast = $('#toast');
+
+function showToast(msg, type) {
+  toast.textContent = msg;
+  toast.className = `toast ${type}`;
+  setTimeout(() => toast.className = 'toast', 3000);
+}
+
+async function loadBooks() {
+  const r = await fetch('/api/books');
+  const books = await r.json();
+  const sel = $('#refBook');
+  for (const b of books) {
+    const opt = document.createElement('option');
+    opt.value = b; opt.textContent = b;
+    sel.appendChild(opt);
+  }
+}
+
+async function loadRefs() {
+  const r = await fetch('/api/references');
+  const refs = await r.json();
+  const div = $('#refList');
+  if (!refs.length) {
+    div.innerHTML = '<div class="empty">No references yet. Add one above.</div>';
+    return;
+  }
+  let html = `<table><thead><tr><th>Question</th><th>Answer</th><th>Verse</th><th></th></tr></thead><tbody>`;
+  for (const ref of refs) {
+    const verse = ref.book ? `${ref.book} ${ref.chapter || ''}:${ref.verse_start || ''}${ref.verse_end && ref.verse_end !== ref.verse_start ? '-' + ref.verse_end : ''}` : '—';
+    html += `<tr>
+      <td class="ref-question" title="${esc(ref.question)}">${esc(ref.question)}</td>
+      <td class="ref-answer" title="${esc(ref.answer)}">${esc(ref.answer)}</td>
+      <td class="ref-verse">${verse}</td>
+      <td class="actions">
+        <button onclick="editRef(${ref.id})">Edit</button>
+        <button class="danger" onclick="deleteRef(${ref.id})">Del</button>
+      </td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  div.innerHTML = html;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function editRef(id) {
+  const row = document.querySelector(`#refList table`).rows;
+  for (const r of row) {
+    if (r.cells[3]?.querySelector(`button[onclick*="editRef(${id})"]`)) {
+      // We'll just fetch all refs and find by id
+    }
+  }
+  // Simpler: fetch and populate
+  fetch('/api/references').then(r => r.json()).then(refs => {
+    const ref = refs.find(x => x.id === id);
+    if (!ref) return;
+    $('#editId').value = ref.id;
+    $('#refQuestion').value = ref.question;
+    $('#refAnswer').value = ref.answer;
+    $('#refBook').value = ref.book || '';
+    $('#refChapter').value = ref.chapter || '';
+    $('#refVstart').value = ref.verse_start || '';
+    $('#refVend').value = ref.verse_end || '';
+    $('#formTitle').textContent = 'Edit Reference';
+    $('#cancelEdit').style.display = 'inline-block';
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  });
+}
+
+function cancelEdit() {
+  $('#editId').value = '';
+  $('#refForm').reset();
+  $('#formTitle').textContent = 'Add Reference';
+  $('#cancelEdit').style.display = 'none';
+}
+
+async function deleteRef(id) {
+  if (!confirm('Delete this reference?')) return;
+  const r = await fetch('/api/references', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action: 'delete', id}),
+  });
+  const data = await r.json();
+  if (data.ok) {
+    showToast('Deleted', 'ok');
+    loadRefs();
+  } else {
+    showToast('Delete failed', 'err');
+  }
+}
+
+$('#refForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const editId = $('#editId').value;
+  const body = {
+    action: editId ? 'update' : 'add',
+    question: $('#refQuestion').value.trim(),
+    answer: $('#refAnswer').value.trim(),
+    book: $('#refBook').value || null,
+    chapter: parseInt($('#refChapter').value) || null,
+    verse_start: parseInt($('#refVstart').value) || null,
+    verse_end: parseInt($('#refVend').value) || null,
+  };
+  if (editId) body.id = parseInt(editId);
+  const r = await fetch('/api/references', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  if (data.ok) {
+    showToast(editId ? 'Updated' : 'Added', 'ok');
+    cancelEdit();
+    loadRefs();
+  } else {
+    showToast('Error saving', 'err');
+  }
+});
+
+loadBooks();
+loadRefs();
+</script>
+</body>
+</html>
