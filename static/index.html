@@ -198,6 +198,13 @@
     <select id="modelSelect" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:13px">
     </select>
   </div>
+  <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+    <label style="color:#8b949e;font-size:12px">Bahasa:</label>
+    <select id="langSelect" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:13px">
+      <option value="id">Indonesia (TB)</option>
+      <option value="en">English (KJV)</option>
+    </select>
+  </div>
 </div>
 </div>
 <div class="panel-center">
@@ -226,7 +233,7 @@ async function loadPassage(book, chapter, verse) {
   panelLeft.style.display = 'none';
   panelRight.style.display = 'none';
   try {
-    const version = 'tb';
+    const version = langSelect ? langSelect.value === 'en' ? 'kjv' : 'tb' : 'tb';
     const r = await fetch(`/api/query?book=${encodeURIComponent(book)}&chapter=${chapter}&verse=${encodeURIComponent(verse)}&version=${version}`);
     if (!r.ok) {
       const err = await r.json();
@@ -300,7 +307,7 @@ function renderPassage(data) {
     html += `</tbody></table></div>`;
 
     if (v.text) {
-      const vlabel = 'TB:';
+      const vlabel = langSelect && langSelect.value === 'en' ? 'KJV:' : 'TB:';
       html += `<div class="kjv-text"><strong>${vlabel}</strong> ${v.text}</div>`;
     }
 
@@ -477,6 +484,7 @@ const chatMessages = $('#chatMessages');
 const chatInput = $('#chatInput');
 const chatSendBtn = $('#chatSendBtn');
 const modelSelect = $('#modelSelect');
+const langSelect = $('#langSelect');
 
 function getCurrentPassageText() {
   const cards = $$('.verse-card');
@@ -517,7 +525,7 @@ async function sendChatMessage() {
       // Fallback: ask ollama
       const context = getCurrentPassageText();
       const model = modelSelect.value || 'llama3.1:8b';
-      const lang = 'id';
+      const lang = langSelect ? langSelect.value : 'id';
       const r = await fetch('/api/ask', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
