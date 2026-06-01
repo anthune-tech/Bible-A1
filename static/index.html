@@ -23,7 +23,8 @@
   .search-form { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
   .search-form select[name="book"]    { flex: 0 1 140px; }
   .search-form select[name="chapter"] { flex: 0 1 80px; }
-  .search-form select[name="verse"]   { flex: 0 1 100px; }
+  .search-form select[name="verse"]   { flex: 0 1 80px; }
+  .search-form select[name="verseEnd"] { flex: 0 1 80px; }
   .search-form input, .search-form select, .search-form button {
     padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d;
     background: #0d1117; color: #e6edf3; font-size: 14px;
@@ -127,6 +128,10 @@
       </select>
       <select name="verse" required disabled>
         <option value="">— Vs —</option>
+      </select>
+      <span style="color:#8b949e;font-size:13px;align-self:center;">–</span>
+      <select name="verseEnd" disabled>
+        <option value="">— to —</option>
       </select>
       <button type="submit">Search</button>
     </form>
@@ -239,12 +244,19 @@ function renderPassage(data) {
 }
 
 function searchFromLink(book, chapter, verse) {
+  const parts = String(verse).split('-');
+  const start = parts[0];
+  const end = parts[1] || '';
   bookSel.value = book;
   loadChapters(book).then(() => {
     chSel.value = chapter;
     loadVerses(book, chapter).then(() => {
-      vsSel.value = verse;
-      loadPassage(book, chapter, verse);
+      vsSel.value = start;
+      if (end) {
+        populateEndVerses(start);
+        vsEndSel.value = end;
+      }
+      loadPassage(book, chapter, verseRange());
     });
   });
 }
@@ -252,6 +264,15 @@ function searchFromLink(book, chapter, verse) {
 const bookSel = $('select[name="book"]');
 const chSel = $('select[name="chapter"]');
 const vsSel = $('select[name="verse"]');
+const vsEndSel = $('select[name="verseEnd"]');
+
+function verseRange() {
+  const s = vsSel.value;
+  const e = vsEndSel.value;
+  if (!s) return '';
+  if (!e || e === s) return s;
+  return `${s}-${e}`;
+}
 
 function clearSelect(sel, placeholder) {
   sel.innerHTML = `<option value="">${placeholder}</option>`;
@@ -282,19 +303,42 @@ async function loadChapters(book) {
 
 async function loadVerses(book, chapter) {
   clearSelect(vsSel, '— Vs —');
+  clearSelect(vsEndSel, '— to —');
   if (!book || !chapter) return;
   try {
     const r = await fetch(`/api/verses?book=${encodeURIComponent(book)}&chapter=${chapter}`);
     const vs = await r.json();
     populateSelect(vsSel, vs, '— Vs —');
+    populateSelect(vsEndSel, vs, '— to —');
   } catch {}
+}
+
+function populateEndVerses(start) {
+  const vs = [...vsSel.options].map(o => o.value).filter(v => v);
+  vsEndSel.innerHTML = `<option value="">— to —</option>`;
+  let found = false;
+  for (const v of vs) {
+    if (!v) continue;
+    if (parseInt(v) >= parseInt(start)) {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      vsEndSel.appendChild(opt);
+      if (!found && v === start) found = true;
+    }
+  }
 }
 
 bookSel.addEventListener('change', () => loadChapters(bookSel.value));
 chSel.addEventListener('change', () => loadVerses(bookSel.value, chSel.value));
 vsSel.addEventListener('change', () => {
+  if (!vsSel.value) return;
+  populateEndVerses(vsSel.value);
+  // Don't auto-submit yet — let user pick end verse
+});
+vsEndSel.addEventListener('change', () => {
   if (bookSel.value && chSel.value && vsSel.value) {
-    loadPassage(bookSel.value, chSel.value, vsSel.value);
+    loadPassage(bookSel.value, chSel.value, verseRange());
   }
 });
 
@@ -328,6 +372,8 @@ async function init() {
   await loadChapters('Eph');
   await loadVerses('Eph', 5);
   vsSel.value = '22';
+  populateEndVerses('22');
+  vsEndSel.value = '24';
   loadPassage('Eph', 5, '22-24');
 }
 
@@ -336,9 +382,9 @@ $('#searchForm').addEventListener('submit', function(e) {
   e.preventDefault();
   const book = this.book.value.trim();
   const chapter = this.chapter.value.trim();
-  const verse = this.verse.value.trim();
-  if (book && chapter && verse) {
-    loadPassage(book, chapter, verse);
+  const vr = verseRange();
+  if (book && chapter && vr) {
+    loadPassage(book, chapter, vr);
   }
 });
 
