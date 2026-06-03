@@ -320,6 +320,22 @@ def delete_reference(ref_id):
     conn.commit()
     conn.close()
 
+
+# --- Commentary ---
+
+def get_commentary(book_code, chapter, verse):
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT * FROM bible_commentary
+           WHERE book_code = ? AND chapter = ?
+           AND (verse_start IS NULL OR (verse_start <= ? AND verse_end >= ?))
+           ORDER BY verse_start ASC NULLS FIRST""",
+        (book_code, chapter, verse, verse),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 class BibleHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=STATIC_DIR, **kwargs)
@@ -393,6 +409,22 @@ class BibleHandler(SimpleHTTPRequestHandler):
                 self._json_response([])
                 return
             self._json_response(search_references(q))
+            return
+
+        if path == "/api/commentary":
+            book = params.get("book", [""])[0]
+            ch_str = params.get("chapter", [""])[0]
+            vs_str = params.get("verse", [""])[0]
+            if not book or not ch_str or not vs_str:
+                self._error(400, "Missing book/chapter/verse params")
+                return
+            try:
+                chapter = int(ch_str)
+                verse = int(vs_str.split("-")[0])
+            except ValueError:
+                self._error(400, "Chapter and verse must be integers")
+                return
+            self._json_response(get_commentary(book, chapter, verse))
             return
 
         # Serve static files
@@ -486,18 +518,39 @@ class BibleHandler(SimpleHTTPRequestHandler):
         model = model or OLLAMA_MODEL
         if lang == "id":
             prompt = (
-                "Anda adalah asisten studi Alkitab. Jawab pertanyaan pengguna "
-                "berdasarkan Kitab Suci. Jawablah dalam bahasa Indonesia. "
-                "Jawab dengan singkat (2-4 kalimat). "
-                "Selalu kutip ayat menggunakan format: Kitab Pasal:Ayat (misalnya Keluaran 20:3, Roma 3:22-24). "
-                "Gunakan nama kitab versi TB (Terjemahan Baru) seperti 'Kejadian', 'Keluaran', '1 Korintus'.\n"
+                "Anda adalah pengajar Alkitab yang berakar pada pandangan dunia historis alkitabiah. "
+                "Alkitab adalah catatan sejarah yang benar dan berotoritas mengenai asal-usul bumi dan umat manusia — "
+                "tidak ada sumber sejarah yang lebih tua atau lebih dapat diandalkan. "
+                "Ajarkan generasi muda menggunakan penalaran filosofis yang berlandaskan Kitab Suci:\n"
+                "1. Dasarkan setiap jawaban pada narasi Alkitab tentang penciptaan, kejatuhan, penebusan, dan pemulihan "
+                "sebagai kerangka untuk memahami seluruh sejarah dan tujuan hidup manusia.\n"
+                "2. Jelaskan bahwa manusia diciptakan Allah untuk memerintah dan mengelola bumi — "
+                "untuk mengolah, memerintah, dan membawa keteraturan di bawah otoritas Allah (Kejadian 1:26-28).\n"
+                "3. Gunakan narasi Alkitab sendiri untuk menjelaskan mengapa dunia seperti sekarang ini: "
+                "penciptaan, kejatuhan, pencaran, umat perjanjian Allah, kedatangan Kristus, dan pengharapan pemulihan.\n"
+                "4. Bernalar secara filosofis dari premis-premis Alkitab — "
+                "tunjukkan hubungan logis antara apa yang dikatakan Kitab Suci dan apa artinya bagi cara kita hidup, berpikir, dan memahami dunia.\n"
+                "5. Selalu kutip ayat dalam format: Kitab Pasal:Ayat (misalnya Kejadian 1:26, Roma 3:23). "
+                "Gunakan nama kitab versi TB seperti 'Kejadian', 'Keluaran', '1 Korintus'.\n"
+                "6. Bersikaplah mendalam seperti guru yang membentuk pikiran generasi muda.\n"
             )
         else:
             prompt = (
-                "You are a Bible study assistant. Answer the user's question "
-                "based on Scripture. Be concise (2-4 sentences). "
-                "Always cite verses using this exact format: Book Chapter:Verse (e.g. Exodus 20:3, Romans 3:22-24). "
+                "You are a Bible teacher rooted in the historical biblical worldview. "
+                "The Bible is the true and authoritative record of Earth's and humanity's origins — "
+                "there is no older or more reliable historical source. "
+                "Teach the next generation using philosophical reasoning grounded in Scripture:\n"
+                "1. Ground every answer in the biblical account of creation, fall, redemption, and restoration "
+                "as the framework for understanding all of history and human purpose.\n"
+                "2. Explain that humanity was designed by God to rule and steward the earth — "
+                "to cultivate, govern, and bring order under God's authority (Genesis 1:26-28).\n"
+                "3. Use the Bible's own narrative to explain why the world is the way it is: "
+                "creation, the fall, the dispersion, God's covenant people, Christ's coming, and the hope of restoration.\n"
+                "4. Reason philosophically from biblical premises — "
+                "show logical connections between what Scripture says and what it means for how we live, think, and understand the world.\n"
+                "5. Always cite verses in Book Chapter:Verse format (e.g. Exodus 20:3, Romans 3:22-24). "
                 "Use full book names (e.g. 'Exodus', '1 Corinthians') for clarity.\n"
+                "6. Be thorough like a teacher shaping young minds — not brief like a chatbot.\n"
             )
         if context:
             prompt += f"\nPassage context:\n{context}\n"
@@ -508,7 +561,7 @@ class BibleHandler(SimpleHTTPRequestHandler):
                 "model": model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"num_predict": 512},
+                "options": {"num_predict": 1024},
             }).encode()
             req = urllib.request.Request(
                 f"{OLLAMA_URL}/api/generate",
@@ -519,8 +572,8 @@ class BibleHandler(SimpleHTTPRequestHandler):
                 result = json.loads(resp.read())
             answer = result.get("response", "").strip()
             if not answer:
-                return {"answer": "(No response from model)"}
-            return {"answer": answer}
+                return {"answer": "(No response from model)", "tokens": 0}
+            return {"answer": answer, "tokens": result.get("eval_count", 0)}
         except Exception as e:
             return {"answer": f"(Error querying AI: {e})"}
 

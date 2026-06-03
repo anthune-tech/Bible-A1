@@ -130,6 +130,23 @@
   .chat-msg.user { background: #1f6feb22; align-self: flex-end; border: 1px solid #1f6feb44; }
   .chat-msg.ai { background: #23863622; align-self: flex-start; border: 1px solid #23863644; white-space: pre-wrap; }
   .chat-msg.error { background: #f8514922; align-self: flex-start; border: 1px solid #f8514944; color: #f85149; }
+  .chat-msg.thinking {
+    background: #21262d; align-self: flex-start; border: 1px solid #30363d;
+    font-size: 14px; color: #8b949e; min-width: 80px;
+  }
+  .chat-msg .token-info {
+    display: block; margin-top: 8px; padding-top: 6px; border-top: 1px solid #30363d;
+    font-size: 11px; color: #8b949e; opacity: 0.7;
+  }
+  .thinking-bar {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .thinking-bar .spinner {
+    width: 14px; height: 14px; border: 2px solid #30363d;
+    border-top-color: #58a6ff; border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .chat-input-row { display: flex; gap: 8px; }
   .chat-input-row input {
     flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d;
@@ -142,6 +159,26 @@
   }
   .chat-input-row button:hover { background: #2ea043; }
   .chat-input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .comm-entry {
+    margin-bottom: 16px; padding: 10px; background: #0d1117; border-radius: 6px;
+    border: 1px solid #21262d;
+  }
+  .comm-label {
+    font-size: 11px; color: #8b949e; margin-bottom: 6px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .comm-text {
+    font-size: 13px; line-height: 1.6; color: #c9d1d9; white-space: pre-wrap;
+  }
+  .comm-text p { margin-bottom: 8px; }
+  .comm-source {
+    font-size: 11px; color: #58a6ff; margin-top: 8px; padding-top: 6px;
+    border-top: 1px solid #21262d;
+  }
+  .commentary-content {
+    max-height: 70vh; overflow-y: auto; padding-right: 4px;
+  }
 
   @media (max-width: 900px) {
     .main-layout { flex-direction: column; }
@@ -213,9 +250,11 @@
 </div>
 </div>
 <div class="panel-right" id="panelRight">
-<div class="commentary-section">
+<div class="commentary-section" id="commentarySection">
   <div class="commentary-header">📜 Commentary</div>
-  <div class="commentary-placeholder">Select a passage to view commentary</div>
+  <div class="commentary-content" id="commentaryContent">
+    <div class="commentary-placeholder">Select a passage to view commentary</div>
+  </div>
 </div>
 </div>
 </div>
@@ -244,6 +283,7 @@ async function loadPassage(book, chapter, verse) {
     renderPassage(data);
     panelLeft.style.display = 'block';
     panelRight.style.display = 'block';
+    loadCommentary(book, chapter, verse);
   } catch (e) {
     content.innerHTML = `<div class="error">Network error: ${e.message}</div>`;
   }
@@ -327,6 +367,46 @@ function renderPassage(data) {
     html += `</div></div></div>`;
   }
   content.innerHTML = html;
+}
+
+async function loadCommentary(book, chapter, verse) {
+  const vs = String(verse).split('-')[0];
+  const commentEl = document.getElementById('commentaryContent');
+  if (!commentEl) return;
+  try {
+    const r = await fetch(`/api/commentary?book=${encodeURIComponent(book)}&chapter=${chapter}&verse=${vs}`);
+    if (!r.ok) {
+      commentEl.innerHTML = '<div class="commentary-placeholder">Failed to load commentary</div>';
+      return;
+    }
+    const entries = await r.json();
+    renderCommentary(entries);
+  } catch (e) {
+    commentEl.innerHTML = `<div class="commentary-placeholder">Error: ${e.message}</div>`;
+  }
+}
+
+function renderCommentary(entries) {
+  const commentEl = document.getElementById('commentaryContent');
+  if (!commentEl) return;
+  if (!entries || entries.length === 0) {
+    commentEl.innerHTML = '<div class="commentary-placeholder">No commentary available for this passage</div>';
+    return;
+  }
+  let html = '';
+  for (const e of entries) {
+    let label;
+    if (e.chapter === 0) {
+      label = 'Book Introduction';
+    } else if (e.verse_range === 'intro') {
+      label = `${e.book_code} ${e.chapter} — Introduction`;
+    } else {
+      label = `${e.book_code} ${e.chapter}:${e.verse_range}`;
+    }
+    html += `<div class="comm-entry"><div class="comm-label">${escHtml(label)}</div><div class="comm-text">${escHtml(e.commentary_text)}</div></div>`;
+  }
+  html += `<div class="comm-source">Matthew Henry's Complete Commentary (Public Domain)</div>`;
+  commentEl.innerHTML = html;
 }
 
 function searchFromLink(book, chapter, verse) {
@@ -462,7 +542,6 @@ async function init() {
         opt.value = b;
         opt.textContent = b;
         opt.className = klass;
-        if (b === 'Eph') opt.selected = true;
         g.appendChild(opt);
       }
       bookSel.appendChild(g);
@@ -472,12 +551,6 @@ async function init() {
     addGroup('— New Testament —', CANONICAL_NT, 'nt-book');
   } catch {}
   loadModels();
-  await loadChapters('Eph');
-  await loadVerses('Eph', 5);
-  vsSel.value = '22';
-  populateEndVerses('22');
-  vsEndSel.value = '24';
-  loadPassage('Eph', 5, '22-24');
 }
 
 // --- AI Chat ---
@@ -497,6 +570,20 @@ function getCurrentPassageText() {
   }).filter(Boolean).join('\n');
 }
 
+let thinkingEl = null;
+
+function showThinking() {
+  thinkingEl = document.createElement('div');
+  thinkingEl.className = 'chat-msg thinking';
+  thinkingEl.innerHTML = '<div class="thinking-bar"><div class="spinner"></div><span>Thinking</span></div>';
+  chatMessages.appendChild(thinkingEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function removeThinking() {
+  if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+}
+
 async function sendChatMessage() {
   const question = chatInput.value.trim();
   if (!question) return;
@@ -504,6 +591,7 @@ async function sendChatMessage() {
   addChatMessage('user', question);
   chatSendBtn.disabled = true;
   chatSendBtn.textContent = '...';
+  showThinking();
   try {
     // First: check admin references
     const refR = await fetch('/api/references/search', {
@@ -514,9 +602,9 @@ async function sendChatMessage() {
     const refData = await refR.json();
 
     if (refData.matched && refData.ref) {
+      removeThinking();
       const ref = refData.ref;
-      addChatMessage('ai', ref.answer);
-      // Load referenced verses if book is set
+      addChatMessage('ai', ref.answer + '\n\n— Reference answer (admin)');
       if (ref.book) {
         const ch = ref.chapter || 1;
         const vs = ref.verse_start || 1;
@@ -534,24 +622,27 @@ async function sendChatMessage() {
         body: JSON.stringify({question, context, model, lang}),
       });
       const data = await r.json();
+      removeThinking();
       if (data.answer && data.answer.includes('does not support image')) {
         addChatMessage('error', 'This model only supports text. Please enter a text question, not an image.');
       } else {
-        addChatMessage('ai', data.answer || 'No response');
+        const tokens = data.tokens ? ` • ${data.tokens} tokens` : '';
+        addChatMessage('ai', data.answer, `<span class="token-info">Model: ${model}${tokens}</span>`);
       }
     }
   } catch (e) {
+    removeThinking();
     addChatMessage('error', `Error: ${e.message}`);
   }
   chatSendBtn.disabled = false;
   chatSendBtn.textContent = 'Tanya';
 }
 
-function addChatMessage(role, text) {
+function addChatMessage(role, text, extraHtml) {
   const div = document.createElement('div');
   div.className = `chat-msg ${role}`;
   if (role === 'ai') {
-    div.innerHTML = linkifyVerses(escHtml(text));
+    div.innerHTML = linkifyVerses(escHtml(text)) + (extraHtml || '');
   } else {
     div.textContent = text;
   }
