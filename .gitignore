@@ -14,8 +14,6 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
-bible.db
 bible_strong.db
-data/
 backup/
 server.log
