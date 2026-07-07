@@ -15,5 +15,4 @@ __pycache__/
 *.sln
 *.sw?
 bible_strong.db
-backup/
 server.log
