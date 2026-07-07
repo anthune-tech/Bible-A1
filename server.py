@@ -22,7 +22,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "bible_strong.db")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -77,6 +77,73 @@ def init_db():
             PRIMARY KEY (book_code, chapter, verse)
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS strong_nlt (
+            book_code TEXT,
+            chapter INTEGER,
+            verse INTEGER,
+            text TEXT,
+            PRIMARY KEY (book_code, chapter, verse)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS strong_nasb (
+            book_code TEXT,
+            chapter INTEGER,
+            verse INTEGER,
+            text TEXT,
+            PRIMARY KEY (book_code, chapter, verse)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS books (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            isbn TEXT,
+            title TEXT NOT NULL,
+            author TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS book_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+            section TEXT DEFAULT '',
+            chunk_text TEXT NOT NULL
+        )
+    """)
+    try:
+        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS book_chunks_fts USING fts5(chunk_id, chunk_text)")
+    except Exception:
+        pass
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS commentary_sources (
+            abbr TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            url TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS commentary_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_abbr TEXT NOT NULL REFERENCES commentary_sources(abbr),
+            book_code TEXT NOT NULL,
+            chapter INTEGER NOT NULL,
+            verse INTEGER NOT NULL,
+            chunk_text TEXT NOT NULL,
+            UNIQUE(source_abbr, book_code, chapter, verse)
+        )
+    """)
+    try:
+        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS commentary_chunks_fts USING fts5(chunk_text, source_abbr, book_code, chapter, verse)")
+    except Exception:
+        pass
+
+    try:
+        conn.execute("PRAGMA foreign_keys=ON")
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 
@@ -151,7 +218,7 @@ def query_verse(book_code, chapter, verse_start, verse_end, version="kjv"):
     is_ot = book_code in OT_SET
     orig_table = "strong_he" if is_ot else "strong_gr"
 
-    en_table = "strong_id" if version == "tb" else "strong_en"
+    en_table = {"kjv": "strong_en", "tb": "strong_id", "nlt": "strong_nlt", "nasb": "strong_nasb"}.get(version, "strong_en")
     en_rows = conn.execute(
         f"SELECT chapter, verse, text FROM {en_table} "
         "WHERE book_code = ? AND chapter = ? AND verse BETWEEN ? AND ? "
@@ -321,9 +388,149 @@ def delete_reference(ref_id):
     conn.close()
 
 
+# --- Book Knowledge Base (RAG) ---
+
+def import_book(isbn, title, author, sections):
+    """Import a book with its content sections.
+    sections: list of {"section": str, "text": str}
+    """
+    conn = get_conn()
+    try:
+        conn.execute("PRAGMA foreign_keys=ON")
+        cur = conn.execute(
+            "INSERT INTO books (isbn, title, author) VALUES (?, ?, ?)",
+            (isbn or None, title, author or ""),
+        )
+        book_id = cur.lastrowid
+
+        for sec in sections:
+            chunks = chunk_text(sec["text"])
+            for chunk in chunks:
+                conn.execute(
+                    "INSERT INTO book_chunks (book_id, section, chunk_text) VALUES (?, ?, ?)",
+                    (book_id, sec.get("section", ""), chunk),
+                )
+
+        # Sync FTS index
+        try:
+            conn.execute("INSERT INTO book_chunks_fts (chunk_id, chunk_text) SELECT id, chunk_text FROM book_chunks")
+        except Exception:
+            pass
+
+        conn.commit()
+        return book_id
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
+def chunk_text(text, max_chars=1000):
+    """Split text into chunks by paragraphs, grouped to ~max_chars."""
+    paragraphs = re.split(r"\n\s*\n", text.strip())
+    chunks = []
+    current = []
+    current_len = 0
+    for p in paragraphs:
+        p = p.strip()
+        if not p:
+            continue
+        p_len = len(p)
+        if current_len + p_len > max_chars and current:
+            chunks.append("\n\n".join(current))
+            current = []
+            current_len = 0
+        current.append(p)
+        current_len += p_len
+    if current:
+        chunks.append("\n\n".join(current))
+    if not chunks:
+        chunks = [text.strip()]
+    return chunks
+
+
+def search_book_chunks(query, limit=5):
+    """Search book chunks using FTS5 (fallback: LIKE)."""
+    conn = get_conn()
+    try:
+        try:
+            rows = conn.execute(
+                """SELECT bc.id, bc.book_id, bc.section, bc.chunk_text, b.title, b.author, b.isbn
+                   FROM book_chunks_fts f
+                   JOIN book_chunks bc ON bc.id = f.chunk_id
+                   JOIN books b ON b.id = bc.book_id
+                   WHERE book_chunks_fts MATCH ?
+                   ORDER BY rank
+                   LIMIT ?""",
+                (query, limit),
+            ).fetchall()
+        except Exception:
+            # FTS5 fallback: simple LIKE search
+            words = [w for w in re.findall(r"\w+", query) if len(w) > 2]
+            if not words:
+                return []
+            conditions = " OR ".join(["bc.chunk_text LIKE ?" for _ in words])
+            params = [f"%{w}%" for w in words]
+            rows = conn.execute(
+                f"""SELECT bc.id, bc.book_id, bc.section, bc.chunk_text, b.title, b.author, b.isbn
+                    FROM book_chunks bc
+                    JOIN books b ON b.id = bc.book_id
+                    WHERE {conditions}
+                    LIMIT ?""",
+                params + [limit],
+            ).fetchall()
+        conn.close()
+        return [
+            {
+                "id": r[0],
+                "book_id": r[1],
+                "section": r[2],
+                "text": r[3],
+                "book_title": r[4],
+                "book_author": r[5],
+                "isbn": r[6],
+            }
+            for r in rows
+        ]
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_all_books():
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT b.*, COUNT(bc.id) as chunk_count
+           FROM books b
+           LEFT JOIN book_chunks bc ON bc.book_id = b.id
+           GROUP BY b.id
+           ORDER BY b.created_at DESC"""
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_book(book_id):
+    conn = get_conn()
+    try:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("DELETE FROM book_chunks WHERE book_id=?", (book_id,))
+        conn.execute("DELETE FROM books WHERE id=?", (book_id,))
+        try:
+                conn.execute("DELETE FROM book_chunks_fts WHERE chunk_id IN (SELECT id FROM book_chunks WHERE book_id=?)", (book_id,))
+        except Exception:
+            pass
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        conn.close()
+
+
 # --- Commentary ---
 
-def get_commentary(book_code, chapter, verse):
+def get_commentary(book_code, chapter, verse, include_studylight=False):
     conn = get_conn()
     rows = conn.execute(
         """SELECT * FROM bible_commentary
@@ -332,8 +539,82 @@ def get_commentary(book_code, chapter, verse):
            ORDER BY verse_start ASC NULLS FIRST""",
         (book_code, chapter, verse, verse),
     ).fetchall()
+    result = [dict(r) for r in rows]
+
+    if include_studylight:
+        sl_rows = conn.execute(
+            """SELECT c.*, s.name as source_name
+               FROM commentary_chunks c
+               JOIN commentary_sources s ON s.abbr = c.source_abbr
+               WHERE c.book_code = ? AND c.chapter = ? AND c.verse = ?
+               ORDER BY c.source_abbr""",
+            (book_code, chapter, verse),
+        ).fetchall()
+        for r in sl_rows:
+            d = dict(r)
+            d["source_type"] = "studylight"
+            result.append(d)
+
     conn.close()
-    return [dict(r) for r in rows]
+    return result
+
+
+def search_commentary(query, limit=5):
+    conn = get_conn()
+    try:
+        clean = " ".join(re.findall(r"\w+", query))
+        if not clean:
+            return []
+        fts_query = " OR ".join(clean.split())
+        rows = conn.execute(
+            """SELECT f.rowid, f.chunk_text, f.source_abbr, f.book_code,
+                      f.chapter, f.verse, s.name as source_name
+               FROM commentary_chunks_fts f
+               JOIN commentary_sources s ON s.abbr = f.source_abbr
+               WHERE commentary_chunks_fts MATCH ?
+               ORDER BY rank
+               LIMIT ?""",
+            (fts_query, limit),
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            # Build verse reference string
+            book_name = d["book_code"]
+            # Try to get full book name
+            try:
+                bn = conn.execute(
+                    "SELECT book_name FROM bible_books WHERE book_code=?",
+                    (d["book_code"],),
+                ).fetchone()
+                if bn:
+                    book_name = bn["book_name"]
+            except Exception:
+                pass
+            d["reference"] = f"{book_name} {d['chapter']}:{d['verse']}"
+            result.append(d)
+        return result
+    except Exception as e:
+        return [{"error": str(e)}]
+    finally:
+        conn.close()
+
+
+def list_commentary_sources():
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """SELECT s.*, COUNT(c.id) as chunk_count
+               FROM commentary_sources s
+               LEFT JOIN commentary_chunks c ON c.source_abbr = s.abbr
+               GROUP BY s.abbr
+               ORDER BY s.abbr"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        return [{"error": str(e)}]
+    finally:
+        conn.close()
 
 
 class BibleHandler(SimpleHTTPRequestHandler):
@@ -424,14 +705,42 @@ class BibleHandler(SimpleHTTPRequestHandler):
             except ValueError:
                 self._error(400, "Chapter and verse must be integers")
                 return
-            self._json_response(get_commentary(book, chapter, verse))
+            sl = params.get("studylight", [""])[0] in ("true", "1", "yes")
+            self._json_response(get_commentary(book, chapter, verse, include_studylight=sl))
             return
 
-        # Serve static files
-        if path == "/" or path == "":
-            self.path = "/index.html"
-        elif path == "/admin" or path == "/admin.html":
-            self.path = "/admin.html"
+        if path == "/api/commentary/search":
+            q = params.get("q", [""])[0]
+            if not q:
+                self._json_response([])
+                return
+            self._json_response(search_commentary(q))
+            return
+
+        if path == "/api/commentary/sources":
+            self._json_response(list_commentary_sources())
+            return
+
+        if path == "/api/books/list":
+            self._json_response(get_all_books())
+            return
+
+        if path == "/api/books/search":
+            q = params.get("q", [""])[0]
+            if not q:
+                self._json_response([])
+                return
+            self._json_response(search_book_chunks(q))
+            return
+
+        # SPA fallback: serve index.html for all non-API, non-file paths
+        if not path.startswith("/api/"):
+            try:
+                translated = self.translate_path(self.path)
+                if not os.path.isfile(translated):
+                    self.path = "/index.html"
+            except Exception:
+                self.path = "/index.html"
         return super().do_GET()
 
     def _json_response(self, data, status=200):
@@ -512,6 +821,33 @@ class BibleHandler(SimpleHTTPRequestHandler):
                 self._json_response({"ok": True})
                 return
 
+        if path == "/api/books/import":
+            isbn = data.get("isbn", "").strip()
+            title = data.get("title", "").strip()
+            author = data.get("author", "").strip()
+            content = data.get("content", "").strip()
+            if not title or not content:
+                self._error(400, "Missing title or content")
+                return
+            sections = data.get("sections", [])
+            if not sections:
+                sections = [{"section": "", "text": content}]
+            try:
+                book_id = import_book(isbn, title, author, sections)
+                self._json_response({"ok": True, "id": book_id})
+            except Exception as e:
+                self._error(500, str(e))
+            return
+
+        if path == "/api/books/delete":
+            book_id = data.get("id")
+            if not book_id:
+                self._error(400, "Missing book id")
+                return
+            delete_book(book_id)
+            self._json_response({"ok": True})
+            return
+
         self._error(404, "Not found")
 
     def _handle_ask(self, question, context, model=None, lang="en"):
@@ -554,6 +890,34 @@ class BibleHandler(SimpleHTTPRequestHandler):
             )
         if context:
             prompt += f"\nPassage context:\n{context}\n"
+
+        # Retrieve relevant book knowledge
+        try:
+            chunks = search_book_chunks(question, limit=3)
+            if chunks:
+                book_ctx = "\n\nReferensi buku:\n"
+                for c in chunks:
+                    source = f"{c['book_title']}"
+                    if c['book_author']:
+                        source += f" oleh {c['book_author']}"
+                    if c['section']:
+                        source += f" — {c['section']}"
+                    book_ctx += f"\n[{source}]\n{c['text'][:800]}\n"
+                prompt += book_ctx
+        except Exception:
+            pass
+
+        # Retrieve relevant commentary knowledge
+        try:
+            comm_chunks = search_commentary(question, limit=3)
+            if comm_chunks:
+                comm_ctx = "\n\nReferensi komentari:\n"
+                for c in comm_chunks:
+                    comm_ctx += f"\n[{c['source_name']} — {c['reference']}]\n{c['chunk_text'][:800]}\n"
+                prompt += comm_ctx
+        except Exception:
+            pass
+
         prompt += f"\nQuestion: {question}\nAnswer:"
 
         try:
@@ -561,7 +925,7 @@ class BibleHandler(SimpleHTTPRequestHandler):
                 "model": model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"num_predict": 1024},
+                "options": {"num_predict": 4096, "num_ctx": 8192},
             }).encode()
             req = urllib.request.Request(
                 f"{OLLAMA_URL}/api/generate",
