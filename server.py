@@ -532,14 +532,18 @@ def delete_book(book_id):
 
 def get_commentary(book_code, chapter, verse, include_studylight=False):
     conn = get_conn()
-    rows = conn.execute(
-        """SELECT * FROM bible_commentary
-           WHERE book_code = ? AND chapter = ?
-           AND (verse_start IS NULL OR (verse_start <= ? AND verse_end >= ?))
-           ORDER BY verse_start ASC NULLS FIRST""",
-        (book_code, chapter, verse, verse),
-    ).fetchall()
-    result = [dict(r) for r in rows]
+    result = []
+    try:
+        rows = conn.execute(
+            """SELECT * FROM bible_commentary
+               WHERE book_code = ? AND chapter = ?
+               AND (verse_start IS NULL OR (verse_start <= ? AND verse_end >= ?))
+               ORDER BY verse_start ASC NULLS FIRST""",
+            (book_code, chapter, verse, verse),
+        ).fetchall()
+        result = [dict(r) for r in rows]
+    except Exception:
+        pass
 
     if include_studylight:
         sl_rows = conn.execute(

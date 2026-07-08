@@ -19,7 +19,7 @@ import zipfile
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "bible_strong.db")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-KJV_SRC = "/tmp/kjv_repo"
+KJV_SRC = os.path.join(os.path.dirname(__file__), "tmp", "kjv_repo")
 TR_URL = "https://raw.githubusercontent.com/honza/textus-receptus/master/data/gnt.flat.json"
 BHS_ZIP_URL = "https://github.com/eliranwong/BHS-Strong-no/raw/master/BHS-with-Strong-no-extended.csv.zip"
 
