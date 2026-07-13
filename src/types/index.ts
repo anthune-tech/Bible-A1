@@ -10,6 +10,7 @@ export interface VerseData {
   verse: number
   reference: string
   text: string
+  syriac?: string
   language: string
   interlinear: InterlinearWord[]
 }

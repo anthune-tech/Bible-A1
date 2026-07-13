@@ -342,6 +342,18 @@ export default function BibleViewer() {
           </div>
         )}
 
+        {version === 'arc' && vd.syriac && (
+          <div style={{
+            fontSize: 24, lineHeight: 2, color: 'var(--text)',
+            fontFamily: 'var(--hebrew-font)', direction: 'rtl',
+            textAlign: 'right', marginBottom: 12,
+            padding: '8px 12px', background: 'var(--interlinear-bg)',
+            borderRadius: 6, border: '1px solid var(--interlinear-border)',
+          }}>
+            {vd.syriac}
+          </div>
+        )}
+
         <div style={{ fontSize: 19, lineHeight: 1.8, color: 'var(--text)' }}
           dangerouslySetInnerHTML={{ __html: enHtml }} />
       </div>
