@@ -39,8 +39,10 @@ def get_visible_text(html):
         text = re.sub(r'<[^>]+>', ' ', text)
         text = re.sub(r'&#8203;', '', text)
         text = re.sub(r'\xa0', ' ', text)
+        text = re.sub(r'&nbsp;', ' ', text)
         text = re.sub(r'&[a-z]+;', ' ', text, flags=re.I)
-        text = re.sub(r'&#\d+;', ' ', text)
+        # Decode numeric HTML entities to actual Unicode characters
+        text = re.sub(r'&#(\d+);', lambda m: chr(int(m.group(1))), text)
         text = re.sub(r'\s+', ' ', text).strip()
         return text
     return ""
@@ -80,8 +82,9 @@ def parse_verses(block):
 
     for i, (pos, vnum) in enumerate(positions):
         end = positions[i + 1][0] if i + 1 < len(positions) else len(block)
-        marker_end = pos + len(str(vnum))
-        vs_text = block[marker_end:end].strip()
+        # For verse 1, include text from block start (preceding Syriac)
+        start = 0 if i == 0 else pos + len(str(vnum))
+        vs_text = block[start:end].strip()
         # Strip leading {NN} or trailing raw digits that are not part of verse text
         vs_text = re.sub(r'^\s*\{\d+\}\s*', '', vs_text).strip()
         vs_text = re.sub(r'\s*\d+\s*$', '', vs_text).strip()
