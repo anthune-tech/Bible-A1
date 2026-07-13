@@ -24,6 +24,7 @@
   --code-bg: #1e293b;
   --hebrew-font: 'SBL Hebrew', 'Times New Roman', serif;
   --greek-font: 'Gentium Plus', 'Cardo', serif;
+  --syriac-font: 'Estrangelo Edessa', 'Serto Jerusalem', 'SBL Syriac', serif;
 }
 
 [data-theme="light"] {

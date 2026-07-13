@@ -262,6 +262,10 @@ export default function BibleViewer() {
     return d.innerHTML
   }
 
+  const showStrongPopup = useCallback((strong: string) => {
+    window.dispatchEvent(new CustomEvent('strong-popup', { detail: { strong } }))
+  }, [])
+
   const renderInterlinear = (vd: VerseData) => {
     if (!vd.text) return null
     const isOt = OT_BOOKS.has(book)
@@ -273,87 +277,81 @@ export default function BibleViewer() {
     })
     enHtml = enHtml.replace(/\n/g, '<br>')
 
+    const langName = version === 'arc' ? 'Aramaic (Peshitta)'
+      : isOt ? 'Hebrew (BHS)'
+      : 'Greek (TR)'
+
     return (
-      <div key={vd.verse} style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 15, color: 'var(--text-secondary)', marginBottom: 4 }}>
+      <div key={vd.verse} style={{ marginBottom: 28 }}>
+        <div style={{ fontSize: 15, color: 'var(--text-secondary)', marginBottom: 6 }}>
           {vd.reference}
         </div>
 
-        {isOt && vd.interlinear.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 4 }}>Hebrew (BHS) with Strong's</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {vd.interlinear.map((iw, idx) => (
-                <div key={idx} style={{
-                  textAlign: 'center', minWidth: 48, padding: '6px 8px',
-                  background: 'var(--interlinear-bg)', borderRadius: 4, border: '1px solid var(--interlinear-border)',
-                }}>
-                  <div style={{ fontSize: 24, color: 'var(--text)', fontFamily: 'var(--hebrew-font)', lineHeight: 1.3 }}>
-                    {iw.original || '־'}
-                  </div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                    {iw.transliteration || '…'}
-                  </div>
-                  <div style={{ fontSize: 14, color: 'var(--success)' }}>
-                    <span style={{ borderBottom: '1px dashed var(--success)', cursor: 'pointer' }}
-                      title={`Strong's ${iw.strong}: ${iw.gloss}`}>
+        {/* Original language word cards — always shown when available */}
+        {(vd.interlinear.length > 0 || (version === 'arc' && vd.syriac)) && (
+          <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--interlinear-bg)', borderRadius: 8, border: '1px solid var(--interlinear-border)' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
+              {langName}
+            </div>
+
+            {version === 'arc' && vd.syriac ? (
+              <div style={{
+                fontSize: 28, lineHeight: 2.2, color: 'var(--text)',
+                fontFamily: 'var(--syriac-font)', direction: 'rtl',
+                textAlign: 'right',
+              }}>
+                {vd.syriac}
+              </div>
+            ) : isOt ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {vd.interlinear.map((iw, idx) => (
+                  <div key={idx} style={{
+                    textAlign: 'center', minWidth: 44, padding: '4px 6px',
+                  }}>
+                    <div style={{ fontSize: 22, color: 'var(--text)', fontFamily: 'var(--hebrew-font)', lineHeight: 1.4, cursor: 'pointer' }}
+                      onClick={() => showStrongPopup(iw.strong)} title={`${iw.strong}: ${iw.gloss}`}>
+                      {iw.original || '־'}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      {iw.transliteration || '…'}
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--success)' }}>
                       {iw.gloss || '…'}
-                    </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {iw.strong}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    {iw.strong}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!isOt && vd.interlinear.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 4 }}>
-              Greek (TR) with Strong's
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {vd.interlinear.map((iw, idx) => (
-                <div key={idx} style={{
-                  textAlign: 'center', minWidth: 48, padding: '6px 8px',
-                  background: 'var(--interlinear-bg)', borderRadius: 4, border: '1px solid var(--interlinear-border)',
-                }}>
-                  <div style={{ fontSize: 24, color: 'var(--text)', fontFamily: 'var(--greek-font)', lineHeight: 1.3 }}>
-                    {iw.original || '…'}
-                  </div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                    {iw.transliteration || '…'}
-                  </div>
-                  {iw.grammar && (
-                    <div style={{ fontSize: 12, color: '#d29922' }}>{iw.grammar}</div>
-                  )}
-                  <div style={{ fontSize: 14, color: 'var(--success)' }}>
-                    <span style={{ borderBottom: '1px dashed var(--success)', cursor: 'pointer' }}
-                      title={`Strong's ${iw.strong}: ${iw.gloss}`}>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {vd.interlinear.map((iw, idx) => (
+                  <div key={idx} style={{
+                    textAlign: 'center', minWidth: 44, padding: '4px 6px',
+                  }}>
+                    <div style={{ fontSize: 22, color: 'var(--text)', fontFamily: 'var(--greek-font)', lineHeight: 1.4, cursor: 'pointer' }}
+                      onClick={() => showStrongPopup(iw.strong)} title={`${iw.strong}: ${iw.gloss}`}>
+                      {iw.original || '…'}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      {iw.transliteration || '…'}
+                    </div>
+                    {iw.grammar && (
+                      <div style={{ fontSize: 11, color: '#d29922' }}>{iw.grammar}</div>
+                    )}
+                    <div style={{ fontSize: 13, color: 'var(--success)' }}>
                       {iw.gloss || '…'}
-                    </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{iw.strong}</div>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{iw.strong}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {version === 'arc' && vd.syriac && (
-          <div style={{
-            fontSize: 24, lineHeight: 2, color: 'var(--text)',
-            fontFamily: 'var(--hebrew-font)', direction: 'rtl',
-            textAlign: 'right', marginBottom: 12,
-            padding: '8px 12px', background: 'var(--interlinear-bg)',
-            borderRadius: 6, border: '1px solid var(--interlinear-border)',
-          }}>
-            {vd.syriac}
-          </div>
-        )}
-
+        {/* English translation */}
         <div style={{ fontSize: 19, lineHeight: 1.8, color: 'var(--text)' }}
           dangerouslySetInnerHTML={{ __html: enHtml }} />
       </div>
