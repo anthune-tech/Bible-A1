@@ -96,6 +96,8 @@ def parse_verses(block):
 def split_syriac_english(text):
     syriac = ''.join(ch for ch in text if 0x0700 <= ord(ch) <= 0x074F or ch == ' ')
     english = re.sub(r'[\u0700-\u074F]', '', text)
+    # Strip leading verse number from English (there may be whitespace before it)
+    english = re.sub(r'^\s*\d+\s*', '', english)
     english = re.sub(r'\s+', ' ', english).strip()
     syriac = re.sub(r'\s+', ' ', syriac).strip()
     return syriac, english
