@@ -39,7 +39,8 @@ def get_visible_text(html):
         text = re.sub(r'<[^>]+>', ' ', text)
         text = re.sub(r'&#8203;', '', text)
         text = re.sub(r'\xa0', ' ', text)
-        text = re.sub(r'&nbsp;', ' ', text)
+        text = re.sub(r'&[a-z]+;', ' ', text, flags=re.I)
+        text = re.sub(r'&#\d+;', ' ', text)
         text = re.sub(r'\s+', ' ', text).strip()
         return text
     return ""
@@ -64,9 +65,9 @@ def parse_verses(block):
     positions = []
     seen = set()
 
-    # Match: verse_number optionally followed by {NN} then capital letter
-    # e.g. "1 {12} And..." or "12 And..."
-    for m in re.finditer(r'(\d+)\s+(?:\{\d+\}\s+)?(?=[A-Z])', block):
+    # Match: verse_number optionally followed by {NN} then a word character
+    # e.g. "1 {12} And..." or "2 up to..."
+    for m in re.finditer(r'(\d+)\s+(?:\{\d+\}\s+)?(?=[A-Za-z])', block):
         vnum = int(m.group(1))
         if vnum not in seen:
             seen.add(vnum)
