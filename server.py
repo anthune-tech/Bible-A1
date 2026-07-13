@@ -96,6 +96,15 @@ def init_db():
         )
     """)
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS strong_arc (
+            book_code TEXT,
+            chapter INTEGER,
+            verse INTEGER,
+            text TEXT,
+            PRIMARY KEY (book_code, chapter, verse)
+        )
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS books (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             isbn TEXT,
@@ -215,6 +224,24 @@ def get_verses(book_code, chapter):
 def query_verse(book_code, chapter, verse_start, verse_end, version="kjv"):
     conn = get_conn()
 
+    # Aramaic (Peshitta) — no interlinear, just plain text
+    if version == "arc":
+        rows = conn.execute(
+            "SELECT chapter, verse, text FROM strong_arc "
+            "WHERE book_code = ? AND chapter = ? AND verse BETWEEN ? AND ? "
+            "ORDER BY verse",
+            (book_code, chapter, verse_start, verse_end),
+        ).fetchall()
+        conn.close()
+        verses = [{
+            "verse": r[1],
+            "reference": f"{book_code} {chapter}:{r[1]}",
+            "text": r[2],
+            "language": "Aramaic",
+            "interlinear": [],
+        } for r in rows]
+        return {"book": book_code, "chapter": chapter, "verses": verses}
+
     is_ot = book_code in OT_SET
     orig_table = "strong_he" if is_ot else "strong_gr"
 
@@ -255,7 +282,6 @@ def query_verse(book_code, chapter, verse_start, verse_end, version="kjv"):
                 if word:
                     en_map.setdefault(strong, []).append(word)
             en_used = {k: [False] * len(v) for k, v in en_map.items()}
-            # Fallback: if no Strong's tags in English, match by word position
             fallback_en_words = None
             if not en_map:
                 raw = re.sub(r"<[^>]+>", "", en_text)

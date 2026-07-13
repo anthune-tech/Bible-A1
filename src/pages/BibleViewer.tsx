@@ -435,6 +435,7 @@ export default function BibleViewer() {
               <option value="kjv">KJV (King James)</option>
               <option value="tb">TB (Terjemahan Baru)</option>
               <option value="nlt">NLT (New Living Translation)</option>
+              <option value="arc">ARC (Aramaic Peshitta)</option>
             </select>
           </label>
         </div>
