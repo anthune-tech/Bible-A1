@@ -93,6 +93,14 @@ def parse_verses(block):
 
     return verses
 
+def split_syriac_english(text):
+    syriac = ''.join(ch for ch in text if 0x0700 <= ord(ch) <= 0x074F or ch == ' ')
+    english = re.sub(r'[\u0700-\u074F]', '', text)
+    english = re.sub(r'\s+', ' ', english).strip()
+    syriac = re.sub(r'\s+', ' ', syriac).strip()
+    return syriac, english
+
+
 def import_book(book_code, url):
     print(f"\nFetching {url}...")
     try:
@@ -112,10 +120,12 @@ def import_book(book_code, url):
     for ch_num in sorted(chapters.keys()):
         vs_dict = chapters[ch_num]
         for vnum in sorted(vs_dict.keys()):
+            raw = vs_dict[vnum]
+            syriac, english = split_syriac_english(raw)
             try:
                 conn.execute(
-                    "INSERT OR REPLACE INTO strong_arc (book_code, chapter, verse, text) VALUES (?, ?, ?, ?)",
-                    (book_code, ch_num, vnum, vs_dict[vnum])
+                    "INSERT OR REPLACE INTO strong_arc (book_code, chapter, verse, text, syriac) VALUES (?, ?, ?, ?, ?)",
+                    (book_code, ch_num, vnum, english, syriac)
                 )
                 total += 1
             except Exception as e:

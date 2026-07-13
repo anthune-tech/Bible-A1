@@ -101,6 +101,7 @@ def init_db():
             chapter INTEGER,
             verse INTEGER,
             text TEXT,
+            syriac TEXT,
             PRIMARY KEY (book_code, chapter, verse)
         )
     """)
@@ -227,7 +228,7 @@ def query_verse(book_code, chapter, verse_start, verse_end, version="kjv"):
     # Aramaic (Peshitta) — no interlinear, just plain text
     if version == "arc":
         rows = conn.execute(
-            "SELECT chapter, verse, text FROM strong_arc "
+            "SELECT chapter, verse, text, syriac FROM strong_arc "
             "WHERE book_code = ? AND chapter = ? AND verse BETWEEN ? AND ? "
             "ORDER BY verse",
             (book_code, chapter, verse_start, verse_end),
@@ -236,7 +237,8 @@ def query_verse(book_code, chapter, verse_start, verse_end, version="kjv"):
         verses = [{
             "verse": r[1],
             "reference": f"{book_code} {chapter}:{r[1]}",
-            "text": r[2],
+            "text": r[2] or "",
+            "syriac": r[3] or "",
             "language": "Aramaic",
             "interlinear": [],
         } for r in rows]
